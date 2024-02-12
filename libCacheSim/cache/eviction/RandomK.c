@@ -1,29 +1,27 @@
 //
-//  LRU with probabilistic promotion
-//
-//
-//  LRU_Prob.c
+//  RandomTwo.c
 //  libCacheSim
 //
-//  Created by Juncheng on 12/4/18.
-//  Copyright © 2018 Juncheng. All rights reserved.
+//  Picks two objects at random and evicts the one that is the least recently
+//  used RandomTwo eviction
+//
+//  Created by Juncheng on 8/2/16.
+//  Copyright © 2016 Juncheng. All rights reserved.
 //
 
 #include "../../dataStructure/hashtable/hashtable.h"
-#include "../../include/libCacheSim/cache.h"
-#include "../../utils/include/mymath.h"
+#include "../../include/libCacheSim/evictionAlgo.h"
+#include "../../include/libCacheSim/macro.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct LRU_Prob_params {
-  cache_obj_t *q_head;
-  cache_obj_t *q_tail;
+typedef struct RandomK_params {
+    int k;
+} RandomK_params_t;
 
-  double prob;
-  int threshold;
-} LRU_Prob_params_t;
+static const char *DEFAULT_PARAMS = "k=1";
 
 // ***********************************************************************
 // ****                                                               ****
@@ -31,15 +29,16 @@ typedef struct LRU_Prob_params {
 // ****                                                               ****
 // ***********************************************************************
 
-static void LRU_Prob_parse_params(cache_t *cache, const char *cache_specific_params);
-static void LRU_Prob_free(cache_t *cache);
-static bool LRU_Prob_get(cache_t *cache, const request_t *req);
-static cache_obj_t *LRU_Prob_find(cache_t *cache, const request_t *req,
-                             const bool update_cache);
-static cache_obj_t *LRU_Prob_insert(cache_t *cache, const request_t *req);
-static cache_obj_t *LRU_Prob_to_evict(cache_t *cache, const request_t *req);
-static void LRU_Prob_evict(cache_t *cache, const request_t *req);
-static bool LRU_Prob_remove(cache_t *cache, const obj_id_t obj_id);
+static void RandomK_parse_params(cache_t *cache, const char *cache_specific_params);
+static void RandomK_free(cache_t *cache);
+static bool RandomK_get(cache_t *cache, const request_t *req);
+static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
+                                   const bool update_cache);
+static cache_obj_t *RandomK_insert(cache_t *cache, const request_t *req);
+static cache_obj_t *RandomK_to_evict(cache_t *cache, const request_t *req);
+static void RandomK_evict(cache_t *cache, const request_t *req);
+static bool RandomK_remove(cache_t *cache, const obj_id_t obj_id);
+static cache_obj_t *RandomK_select(cache_t *cache, const int k);
 
 // ***********************************************************************
 // ****                                                               ****
@@ -47,43 +46,36 @@ static bool LRU_Prob_remove(cache_t *cache, const obj_id_t obj_id);
 // ****                                                               ****
 // ****                       init, free, get                         ****
 // ***********************************************************************
-
 /**
- * @brief initialize the cache
+ * @brief initialize a RandomTwo cache
  *
  * @param ccache_params some common cache parameters
- * @param cache_specific_params cache specific parameters, see parse_params
- * function or use -e "print" with the cachesim binary
+ * @param cache_specific_params RandomTwo specific parameters, should be NULL
  */
-cache_t *LRU_Prob_init(const common_cache_params_t ccache_params,
-                       const char *cache_specific_params) {
-  cache_t *cache = cache_struct_init("LRU_Prob", ccache_params, cache_specific_params);
-  cache->cache_init = LRU_Prob_init;
-  cache->cache_free = LRU_Prob_free;
-  cache->get = LRU_Prob_get;
-  cache->find = LRU_Prob_find;
-  cache->insert = LRU_Prob_insert;
-  cache->evict = LRU_Prob_evict;
-  cache->remove = LRU_Prob_remove;
-  cache->to_evict = LRU_Prob_to_evict;
-  if (ccache_params.consider_obj_metadata) {
-    cache->obj_md_size = 8 * 2;
-  } else {
-    cache->obj_md_size = 0;
-  }
+cache_t *RandomK_init(const common_cache_params_t ccache_params,
+                        const char *cache_specific_params) {
+  common_cache_params_t ccache_params_copy = ccache_params;
+  ccache_params_copy.hashpower = MAX(12, ccache_params_copy.hashpower - 8);
 
-  cache->eviction_params =
-      (LRU_Prob_params_t *)malloc(sizeof(LRU_Prob_params_t));
-  LRU_Prob_params_t *params = (LRU_Prob_params_t *)(cache->eviction_params);
-  params->prob = 0.5;
+  cache_t *cache =
+      cache_struct_init("RandomK", ccache_params_copy, cache_specific_params);
+  cache->cache_init = RandomK_init;
+  cache->cache_free = RandomK_free;
+  cache->get = RandomK_get;
+  cache->find = RandomK_find;
+  cache->insert = RandomK_insert;
+  cache->to_evict = RandomK_to_evict;
+  cache->evict = RandomK_evict;
+  cache->remove = RandomK_remove;
 
+  cache->eviction_params = (RandomK_params_t *) malloc(sizeof(RandomK_params_t));
+  RandomK_params_t *params = (RandomK_params_t *) cache->eviction_params;
+  params->k = 2;
   if (cache_specific_params != NULL) {
-    LRU_Prob_parse_params(cache, cache_specific_params);
+    RandomK_parse_params(cache, cache_specific_params);
   }
-
-  params->threshold = (int)1.0 / params->prob;
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "LRU_Prob_%lf",
-           params->prob);
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Random-%d",
+             params->k);
 
   return cache;
 }
@@ -93,9 +85,9 @@ cache_t *LRU_Prob_init(const common_cache_params_t ccache_params,
  *
  * @param cache
  */
-static void LRU_Prob_free(cache_t *cache) {
-  free(cache->eviction_params);
-  cache_struct_free(cache);
+static void RandomK_free(cache_t *cache) { 
+    free(cache->eviction_params);
+    cache_struct_free(cache);
 }
 
 /**
@@ -117,7 +109,7 @@ static void LRU_Prob_free(cache_t *cache) {
  * @param req
  * @return true if cache hit, false if cache miss
  */
-static bool LRU_Prob_get(cache_t *cache, const request_t *req) {
+static bool RandomK_get(cache_t *cache, const request_t *req) {
   return cache_get_base(cache, req);
 }
 
@@ -128,47 +120,38 @@ static bool LRU_Prob_get(cache_t *cache, const request_t *req) {
 // ***********************************************************************
 
 /**
- * @brief find an object in the cache
+ * @brief check whether an object is in the cache
  *
  * @param cache
  * @param req
  * @param update_cache whether to update the cache,
  *  if true, the object is promoted
  *  and if the object is expired, it is removed from the cache
- * @return the object or NULL if not found
+ * @return true on hit, false on miss
  */
-static cache_obj_t* LRU_Prob_find(cache_t *cache, const request_t *req,
-                                 const bool update_cache) {
-  LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
-
-  cache_obj_t *cached_obj = cache_find_base(cache, req, update_cache);
-  if (cached_obj != NULL && likely(update_cache)) {
-    cached_obj->misc.freq += 1;
-    cached_obj->misc.next_access_vtime = req->next_access_vtime;
-
-    if (next_rand() % params->threshold == 0) {
-      move_obj_to_head(&params->q_head, &params->q_tail, cached_obj);
-    }
+static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
+                                   const bool update_cache) {
+  cache_obj_t *obj = cache_find_base(cache, req, update_cache);
+  if (obj != NULL && update_cache) {
+    obj->RandomTwo.last_access_vtime = cache->n_req;
   }
 
-  return cached_obj;
+  return obj;
 }
 
 /**
  * @brief insert an object into the cache,
  * update the hash table and cache metadata
  * this function assumes the cache has enough space
- * eviction should be
- * performed before calling this function
+ * and eviction is not part of this function
  *
  * @param cache
  * @param req
  * @return the inserted object
  */
-static cache_obj_t *LRU_Prob_insert(cache_t *cache, const request_t *req) {
-  LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
+static cache_obj_t *RandomK_insert(cache_t *cache, const request_t *req) {
   cache_obj_t *obj = cache_insert_base(cache, req);
-  prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+  obj->RandomTwo.last_access_vtime = cache->n_req;
 
   return obj;
 }
@@ -183,9 +166,19 @@ static cache_obj_t *LRU_Prob_insert(cache_t *cache, const request_t *req) {
  * @param cache the cache
  * @return the object to be evicted
  */
-static cache_obj_t *LRU_Prob_to_evict(cache_t *cache, const request_t *req) {
-  LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
-  cache_obj_t *obj_to_evict = params->q_tail;
+static cache_obj_t *RandomK_to_evict(cache_t *cache, const request_t *req) {
+  return RandomK_select(cache, ((RandomK_params_t *)cache->eviction_params)->k);
+}
+
+//this is only a sequential version for now
+static cache_obj_t *RandomK_select(cache_t *cache, const int k) {
+  cache_obj_t *obj_to_evict = hashtable_rand_obj(cache->hashtable);
+
+  for (int i = 1; i < k; i++) {
+    cache_obj_t *obj = hashtable_rand_obj(cache->hashtable);
+    if (obj->RandomTwo.last_access_vtime < obj_to_evict->RandomTwo.last_access_vtime)
+      obj_to_evict = obj;
+  }
   return obj_to_evict;
 }
 
@@ -196,22 +189,11 @@ static cache_obj_t *LRU_Prob_to_evict(cache_t *cache, const request_t *req) {
  *
  * @param cache
  * @param req not used
- * @param evicted_obj if not NULL, return the evicted object to caller
  */
-static void LRU_Prob_evict(cache_t *cache, const request_t *req) {
-  printf("lruprob evict\n");
-  LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
-  cache_obj_t *obj_to_evict = params->q_tail;
-  remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
-  cache_remove_obj_base(cache, obj_to_evict, true);
-}
-
-static void LRU_Prob_remove_obj(cache_t *cache, cache_obj_t *obj_to_remove) {
-  DEBUG_ASSERT(obj_to_remove != NULL);
-  LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
-
-  remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_remove);
-  cache_remove_obj_base(cache, obj_to_remove, true);
+static void RandomK_evict(cache_t *cache, const request_t *req) {
+  cache_obj_t *obj_to_evict = RandomK_to_evict(cache, req);
+  DEBUG_ASSERT(obj_to_evict->obj_size != 0);
+  cache_evict_base(cache, obj_to_evict, true);
 }
 
 /**
@@ -227,13 +209,12 @@ static void LRU_Prob_remove_obj(cache_t *cache, cache_obj_t *obj_to_remove) {
  * @return true if the object is removed, false if the object is not in the
  * cache
  */
-static bool LRU_Prob_remove(cache_t *cache, const obj_id_t obj_id) {
+static bool RandomK_remove(cache_t *cache, const obj_id_t obj_id) {
   cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_id);
   if (obj == NULL) {
     return false;
   }
-
-  LRU_Prob_remove_obj(cache, obj);
+  cache_remove_obj_base(cache, obj, true);
 
   return true;
 }
@@ -243,15 +224,15 @@ static bool LRU_Prob_remove(cache_t *cache, const obj_id_t obj_id) {
 // ****                parameter set up functions                     ****
 // ****                                                               ****
 // ***********************************************************************
-static const char *LRU_Prob_current_params(LRU_Prob_params_t *params) {
+static const char *RandomK_current_params(RandomK_params_t *params) {
   static __thread char params_str[128];
-  snprintf(params_str, 128, "prob=%.4lf\n", params->prob);
+  snprintf(params_str, 128, "k=%d", params->k);
   return params_str;
 }
 
-static void LRU_Prob_parse_params(cache_t *cache,
+static void RandomK_parse_params(cache_t *cache,
                                   const char *cache_specific_params) {
-  LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
+  RandomK_params_t *params = (RandomK_params_t *)cache->eviction_params;
   char *params_str = strdup(cache_specific_params);
   char *old_params_str = params_str;
   char *end;
@@ -267,14 +248,14 @@ static void LRU_Prob_parse_params(cache_t *cache,
       params_str++;
     }
 
-    if (strcasecmp(key, "prob") == 0) {
-      params->prob = (double)strtof(value, &end);
+    if (strcasecmp(key, "k") == 0) {
+      params->k = (int)strtol(value, &end, 0);
       if (strlen(end) > 2) {
         ERROR("param parsing error, find string \"%s\" after number\n", end);
       }
 
     } else if (strcasecmp(key, "print") == 0) {
-      printf("current parameters: %s\n", LRU_Prob_current_params(params));
+      printf("RandomK: %s\n", RandomK_current_params(params));
       exit(0);
     } else {
       ERROR("%s does not have parameter %s\n", cache->cache_name, key);
@@ -283,7 +264,6 @@ static void LRU_Prob_parse_params(cache_t *cache,
   }
   free(old_params_str);
 }
-
 
 #ifdef __cplusplus
 }

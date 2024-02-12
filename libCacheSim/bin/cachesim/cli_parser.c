@@ -268,9 +268,7 @@ void parse_cmd(int argc, char *argv[], struct arguments *args) {
   init_arg(args);
 
   static struct argp argp = {options, parse_opt, args_doc, doc};
-
   argp_parse(&argp, argc, argv, 0, 0, args);
-
   args->trace_path = args->args[0];
   args->trace_type_str = args->args[1];
   parse_eviction_algo(args, args->args[2]);

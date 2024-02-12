@@ -135,6 +135,16 @@ static cache_obj_t *RandomTwo_insert(cache_t *cache, const request_t *req) {
 
   return obj;
 }
+//this is only a sequential version for now
+static cache_obj_t *RandomTwo_selectk(cache_t *cache, const int k) {
+  cache_obj_t *obj_to_evict = hashtable_rand_obj(cache->hashtable);
+  for (int i = 1; i < k; i++) {
+    cache_obj_t *obj = hashtable_rand_obj(cache->hashtable);
+    if (obj->RandomTwo.last_access_vtime < obj_to_evict->RandomTwo.last_access_vtime)
+      obj_to_evict = obj;
+  }
+  return obj_to_evict;
+}
 
 /**
  * @brief find the object to be evicted
@@ -147,14 +157,9 @@ static cache_obj_t *RandomTwo_insert(cache_t *cache, const request_t *req) {
  * @return the object to be evicted
  */
 static cache_obj_t *RandomTwo_to_evict(cache_t *cache, const request_t *req) {
-  cache_obj_t *obj_to_evict1 = hashtable_rand_obj(cache->hashtable);
-  cache_obj_t *obj_to_evict2 = hashtable_rand_obj(cache->hashtable);
-  if (obj_to_evict1->RandomTwo.last_access_vtime <
-      obj_to_evict2->RandomTwo.last_access_vtime)
-    return obj_to_evict1;
-  else
-    return obj_to_evict2;
+  return RandomTwo_selectk(cache, 2);
 }
+
 
 /**
  * @brief evict an object from the cache
@@ -165,13 +170,9 @@ static cache_obj_t *RandomTwo_to_evict(cache_t *cache, const request_t *req) {
  * @param req not used
  */
 static void RandomTwo_evict(cache_t *cache, const request_t *req) {
-  cache_obj_t *obj_to_evict1 = hashtable_rand_obj(cache->hashtable);
-  cache_obj_t *obj_to_evict2 = hashtable_rand_obj(cache->hashtable);
-  if (obj_to_evict1->RandomTwo.last_access_vtime <
-      obj_to_evict2->RandomTwo.last_access_vtime)
-    cache_evict_base(cache, obj_to_evict1, true);
-  else
-    cache_evict_base(cache, obj_to_evict2, true);
+  cache_obj_t *obj_to_evict = RandomTwo_to_evict(cache, req);
+  DEBUG_ASSERT(obj_to_evict->obj_size != 0);
+  cache_evict_base(cache, obj_to_evict, true);
 }
 
 /**

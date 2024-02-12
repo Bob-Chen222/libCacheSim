@@ -43,6 +43,8 @@ static inline cache_t *create_cache(const char *trace_path,
     cache = Random_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "randomTwo") == 0) {
     cache = RandomTwo_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "randomK") == 0) {
+    cache = RandomK_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lfu") == 0) {
     cache = LFU_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "gdsf") == 0) {
@@ -117,6 +119,10 @@ static inline cache_t *create_cache(const char *trace_path,
     cache = SFIFOv0_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lru-prob") == 0) {
     cache = LRU_Prob_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "lru-delay") == 0) {
+    cache = LRU_delay_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "lru-probv0") == 0) {
+    cache = lpLRU_prob_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "fifo-belady") == 0) {
     cache = FIFO_Belady_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lru-belady") == 0) {
@@ -132,6 +138,10 @@ static inline cache_t *create_cache(const char *trace_path,
     cache = S3FIFOd_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "qdlp") == 0) {
     cache = QDLP_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "sharding") == 0) {
+    cache = lpFIFO_shards_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "batch") == 0) {
+    cache = lpFIFO_batch_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "sieve") == 0) {
     cache = Sieve_init(cc_params, eviction_params);
 #ifdef ENABLE_GLCACHE

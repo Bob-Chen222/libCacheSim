@@ -100,6 +100,18 @@ cache_t *Random_init(const common_cache_params_t ccache_params,
 cache_t *RandomTwo_init(const common_cache_params_t ccache_params,
                      const char *cache_specific_params);
 
+cache_t *RandomK_init(const common_cache_params_t ccache_params,
+                      const char *cache_specific_params); 
+
+cache_t *lpFIFO_shards_init(const common_cache_params_t ccache_params,
+                            const char *cache_specific_params);
+
+cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
+                           const char *cache_specific_params);
+
+cache_t *lpLRU_prob_init(const common_cache_params_t ccache_params,
+                  const char *cache_specific_params);
+
 cache_t *SLRU_init(const common_cache_params_t ccache_params,
                    const char *cache_specific_params);
 
@@ -165,6 +177,10 @@ cache_t *FIFO_Belady_init(const common_cache_params_t ccache_params,
 
 cache_t *Sieve_init(const common_cache_params_t ccache_params,
                     const char *cache_specific_params);
+
+cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
+                        const char *cache_specific_params);
+                        
 
 #ifdef ENABLE_LRB
 cache_t *LRB_init(const common_cache_params_t ccache_params,

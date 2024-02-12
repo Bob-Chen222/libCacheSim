@@ -32,6 +32,7 @@ static cache_obj_t *FIFO_insert(cache_t *cache, const request_t *req);
 static cache_obj_t *FIFO_to_evict(cache_t *cache, const request_t *req);
 static void FIFO_evict(cache_t *cache, const request_t *req);
 static bool FIFO_remove(cache_t *cache, const obj_id_t obj_id);
+static void print_FIFO(cache_t *cache);
 
 // ***********************************************************************
 // ****                                                               ****
@@ -138,6 +139,7 @@ static cache_obj_t *FIFO_insert(cache_t *cache, const request_t *req) {
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_insert_base(cache, req);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+  // print_FIFO(cache);
 
   return obj;
 }
@@ -212,6 +214,17 @@ static bool FIFO_remove(cache_t *cache, const obj_id_t obj_id) {
   cache_remove_obj_base(cache, obj, true);
 
   return true;
+}
+
+static void print_FIFO(cache_t *cache) {
+  FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
+  printf("FIFO queue: ");
+  cache_obj_t *obj = params->q_head;
+  while (obj != NULL) {
+    printf("===%lu ", obj->obj_id);
+    obj = obj->queue.next;
+  }
+  printf("\n");
 }
 
 #ifdef __cplusplus

@@ -15,6 +15,7 @@
 
 int main(int argc, char **argv) {
   struct arguments args;
+  
   parse_cmd(argc, argv, &args);
   if (args.n_cache_size == 0) {
     ERROR("no cache size found\n");

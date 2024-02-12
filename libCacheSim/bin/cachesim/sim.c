@@ -10,6 +10,37 @@
 extern "C" {
 #endif
 
+typedef struct parallel_simulator_params {
+  uint64_t req_cnt;
+  uint64_t miss_cnt;
+  uint64_t req_byte;
+  uint64_t miss_byte;
+  uint64_t last_req_cnt;
+  uint64_t last_miss_cnt;
+  char* current_file_pos; // current position in the file
+} parallel_simulator_params_t;
+
+void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
+              int warmup_sec, char *ofilepath) {
+  /* random seed */
+  srand(time(NULL));
+  set_rand_seed(rand());
+
+  //stats misc
+  uint64_t start_ts = (uint64_t)req->clock_time;
+  uint64_t last_report_ts = warmup_sec;
+
+  // run the simulation in parallel
+  GThreadPool *gthread_pool = g_thread_pool_new(
+      (GFunc)_simulate, (gpointer)params, reader->parallel_worker TRUE, NULL);
+  ASSERT_NOT_NULL(gthread_pool, "cannot create thread pool in simulator\n");
+
+  // wait for all threads to finish
+
+
+
+}
+
 void simulate(reader_t *reader, cache_t *cache, int report_interval,
               int warmup_sec, char *ofilepath) {
   /* random seed */
@@ -40,10 +71,12 @@ void simulate(reader_t *reader, cache_t *cache, int report_interval,
 
     req_cnt++;
     req_byte += req->obj_size;
+    // printf("lalala\n");
     if (cache->get(cache, req) == false) {
       miss_cnt++;
       miss_byte += req->obj_size;
     }
+    // printf("fdafa\n");
     if (req->clock_time - last_report_ts >= report_interval &&
         req->clock_time != 0) {
       INFO(

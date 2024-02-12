@@ -84,6 +84,7 @@ typedef struct reader {
   trace_format_e trace_format;
   int ver;
   bool cloned;  // true if this is a cloned reader, else false
+  int parallel_worker; //0 means sequential and any val greater than 1 means the number of data points we need to read in parallel
   int64_t cap_at_n_req;
   /* the offset of the first request in the trace, it should be 0 for
    *    txt trace
@@ -103,7 +104,6 @@ typedef struct reader {
   bool is_zstd_file;
   /* the size of one request in binary trace */
   size_t item_size;
-
   /************* used by txt trace *************/
   FILE *file;
   char *line_buf;
@@ -116,6 +116,7 @@ typedef struct reader {
   bool ignore_size_zero_req;
   /* if true, ignore the obj_size in the trace, and use size one */
   bool ignore_obj_size;
+
 
   /* this is used when
    * a) the reader splits a large req into multiple chunked requests

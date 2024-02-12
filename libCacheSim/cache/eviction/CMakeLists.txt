@@ -2,6 +2,7 @@ set(sourceC
         MRU.c
         Random.c
         RandomTwo.c
+        RandomK.c
         LFU.c
         LFUDA.c
         ARC.c
@@ -25,11 +26,16 @@ set(sourceC
         WTinyLFU.c
         Size.c
         LRUProb.c
+        LRUdelay.c
         QDLP.c
         nop.c
 
         FIFO_Merge.c
         FIFO_Reinsertion.c
+
+        lpFIFO_batch.c
+        lpFIFO_shards.c
+        lpLRU_prob.c
 
         S3FIFO.c
         S3FIFOd.c

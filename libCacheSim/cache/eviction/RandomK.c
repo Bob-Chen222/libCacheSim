@@ -131,6 +131,8 @@ static bool RandomK_get(cache_t *cache, const request_t *req) {
  */
 static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
                                    const bool update_cache) {
+
+  //no need for blocking
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
     obj->RandomTwo.last_access_vtime = cache->n_req;

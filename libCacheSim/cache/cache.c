@@ -193,11 +193,11 @@ cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
       cache_obj = NULL;
     }
 #endif
-
-    if (update_cache) {
-      cache_obj->misc.next_access_vtime = req->next_access_vtime;
-      cache_obj->misc.freq += 1;
-    }
+    // WARNING: comment out stats
+    // if (update_cache) {
+    //   cache_obj->misc.next_access_vtime = req->next_access_vtime;
+    //   cache_obj->misc.freq += 1;
+    // }
   }
 
   return cache_obj;

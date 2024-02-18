@@ -30,7 +30,7 @@ typedef struct hashtable {
   uint16_t hashpower;
   bool external_obj; /* whether the object should be allocated by hash table,
                         this should be true most of the time */
-  GRWLock mux;
+  bool transtion;    /* whether the hashtable is in transition state */
   union {
     // used for hashtable V1, these cache_obj pointers are used by external
     // modules, so if hashtable needs to move the obj, their pointer need to be

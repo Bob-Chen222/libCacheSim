@@ -21,21 +21,12 @@ typedef struct parallel_simulator_params {
 } parallel_simulator_params_t;
 
 void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
-              int warmup_sec, char *ofilepath) {
+              int warmup_sec, char *ofilepath, uint64_t threads) {
   /* random seed */
   srand(time(NULL));
   set_rand_seed(rand());
 
-  //stats misc
-  uint64_t start_ts = (uint64_t)req->clock_time;
-  uint64_t last_report_ts = warmup_sec;
-
-  // run the simulation in parallel
-  GThreadPool *gthread_pool = g_thread_pool_new(
-      (GFunc)_simulate, (gpointer)params, reader->parallel_worker TRUE, NULL);
-  ASSERT_NOT_NULL(gthread_pool, "cannot create thread pool in simulator\n");
-
-  // wait for all threads to finish
+  
 
 
 

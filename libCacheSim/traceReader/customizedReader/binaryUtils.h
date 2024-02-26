@@ -12,7 +12,6 @@ extern "C" {
 
 /* read decompressed data file and load all of them at once */
 static inline char *_parallel_read_bytes(reader_t *reader, const int num_worker) {
-  DEBUG_ASSERT(num_worker > 0);
   if (reader->mmap_offset >= reader->file_size) {
     return NULL;
   }
@@ -66,7 +65,6 @@ static inline char *read_bytes(reader_t *reader) {
 }
 
 static inline char *parallel_read_bytes(reader_t *reader, const int num_worker) {
-  DEBUG_ASSERT(num_worker > 0);
   char *start = NULL;
   start = _parallel_read_bytes(reader, num_worker);
   return start;

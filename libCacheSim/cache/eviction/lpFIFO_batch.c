@@ -23,6 +23,7 @@ extern "C" {
 typedef struct {
   cache_obj_t *q_head;
   cache_obj_t *q_tail;
+  pthread_mutex_t lock;
   // clock uses one-bit counter
   int n_bit_counter;
   // max_freq = 1 << (n_bit_counter - 1)
@@ -96,6 +97,7 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
   params->n_bit_counter = 1;
   params->max_freq = 1;
   params->batch_size = 10000;
+  pthread_mutex_init(&params->lock, NULL);
 
   lpFIFO_batch_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
@@ -146,13 +148,12 @@ static void lpFIFO_batch_free(cache_t *cache) {
 static bool lpFIFO_batch_get(cache_t *cache, const request_t *req) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
   // if update, promote when reached batch size
-  // if ((cache->n_req + 1)% 100 == 0) {
-  //   printf("n-req: %ld\n", cache->n_req);
-  // }
+  pthread_mutex_lock(&params->lock);
   if ((cache->n_req + 1)% params->batch_size == 0) {
     // printf("promoting at n-req: %ld\n", cache->n_req);
     lpFIFO_batch_promote_all(cache, req);
   }
+  pthread_mutex_unlock(&params->lock);
   return cache_get_base(cache, req);
 }
 
@@ -177,6 +178,7 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
   cache_t *buff = params->buffer;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
+  pthread_mutex_lock(&params->lock);
   if (obj != NULL && update_cache && !buff->find(buff, req, false)) {
     while (!buff->can_insert(buff, req)) {
       buff->evict(buff, NULL);
@@ -186,6 +188,7 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
     obj->next_access_vtime = req->next_access_vtime;
 #endif
   }
+  pthread_mutex_unlock(&params->lock);
 
   return obj;
 }
@@ -204,9 +207,12 @@ static cache_obj_t *lpFIFO_batch_insert(cache_t *cache, const request_t *req) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
 
   cache_obj_t *obj = cache_insert_base(cache, req);
+
+  pthread_mutex_lock(&params->lock);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
   obj->lpFIFO_batch.freq = 0;
+  pthread_mutex_unlock(&params->lock);
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -257,8 +263,10 @@ static cache_obj_t *lpFIFO_batch_to_evict(cache_t *cache, const request_t *req) 
 static void lpFIFO_batch_evict(cache_t *cache, const request_t *req) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
 
+  pthread_mutex_lock(&params->lock);
   cache_obj_t *obj_to_evict = params->q_tail;
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
+  pthread_mutex_unlock(&params->lock);
   cache_evict_base(cache, obj_to_evict, true);
 }
 
@@ -269,6 +277,7 @@ static void lpFIFO_batch_evict(cache_t *cache, const request_t *req) {
  * @param req not used
  */
 static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req) {
+  
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
   cache_t *buff = params->buffer;
   cache_obj_t *obj_to_promote;

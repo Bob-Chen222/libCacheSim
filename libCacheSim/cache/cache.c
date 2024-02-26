@@ -5,6 +5,7 @@
 #include "../dataStructure/hashtable/hashtable.h"
 #include "../include/libCacheSim/cache.h"
 #include "../include/libCacheSim/prefetchAlgo.h"
+#include <stdatomic.h>
 
 /** this file contains both base function, which should be called by all
  *eviction algorithms, and the queue related functions, which should be called
@@ -178,10 +179,11 @@ cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
 
   // "update_cache = true" means that it is a real user request, use handle_find
   // to update prefetcher's state
-  if (cache->prefetcher && cache->prefetcher->handle_find && update_cache) {
-    bool hit = (cache_obj != NULL);
-    cache->prefetcher->handle_find(cache, req, hit);
-  }
+  //we will not use this
+  // if (cache->prefetcher && cache->prefetcher->handle_find && update_cache) {
+  //   bool hit = (cache_obj != NULL);
+  //   cache->prefetcher->handle_find(cache, req, hit);
+  // }
 
   if (cache_obj != NULL) {
 #ifdef SUPPORT_TTL
@@ -193,10 +195,11 @@ cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
       cache_obj = NULL;
     }
 #endif
-    // WARNING: comment out stats
     // if (update_cache) {
+    //   pthread_mutex_lock(&cache_obj->lock);
     //   cache_obj->misc.next_access_vtime = req->next_access_vtime;
     //   cache_obj->misc.freq += 1;
+    //   pthread_mutex_unlock(&cache_obj->lock);
     // }
   }
 
@@ -223,7 +226,8 @@ cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
  * @return true if cache hit, false if cache miss
  */
 bool cache_get_base(cache_t *cache, const request_t *req) {
-  cache->n_req += 1;
+  // use atomic add
+  atomic_fetch_add(&cache->n_req, 1);
 
   VERBOSE("******* %s req %ld, obj %ld, obj_size %ld, cache size %ld/%ld\n",
           cache->cache_name, cache->n_req, req->obj_id, req->obj_size,
@@ -234,7 +238,17 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
 
   if (hit) {
     VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
-  } else if (!cache->can_insert(cache, req)) {
+    if (cache->prefetcher && cache->prefetcher->prefetch) {
+    cache->prefetcher->prefetch(cache, req);
+    }
+    return hit;
+  }
+
+
+  //if use this lock, then all the codes become atomic and we don't need to lock in
+  //sub function
+  pthread_mutex_lock(&cache->lock);
+  if (!cache->can_insert(cache, req)) {
     VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
              req->obj_id);
   } else {
@@ -245,6 +259,7 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
     }
     cache->insert(cache, req);
   }
+  pthread_mutex_unlock(&cache->lock);
 
   if (cache->prefetcher && cache->prefetcher->prefetch) {
     cache->prefetcher->prefetch(cache, req);
@@ -265,8 +280,13 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
  */
 cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   cache_obj_t *cache_obj = hashtable_insert(cache->hashtable, req);
-  cache->occupied_byte +=
-      (int64_t)cache_obj->obj_size + (int64_t)cache->obj_md_size;
+  
+  // use atomic operation
+  // int64_t obj_size = (int64_t)atomic_load(&cache_obj->obj_size);
+  // int64_t obj_md_size = (int64_t)atomic_load(&cache->obj_md_size);
+  // atomic_fetch_add(&cache->occupied_byte, obj_size + obj_md_size);
+  // atomic_fetch_add(&cache->n_obj, 1);
+  cache->occupied_byte += cache_obj->obj_size + cache->obj_md_size;
   cache->n_obj += 1;
 
 #ifdef SUPPORT_TTL
@@ -280,8 +300,10 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   cache_obj->create_time = CURR_TIME(cache, req);
 #endif
 
+  // pthread_mutex_lock(&cache_obj->lock);
   cache_obj->misc.next_access_vtime = req->next_access_vtime;
   cache_obj->misc.freq = 0;
+  // pthread_mutex_unlock(&cache_obj->lock);
 
   return cache_obj;
 }

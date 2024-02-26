@@ -21,6 +21,8 @@ typedef struct LRU_Prob_params {
   cache_obj_t *q_head;
   cache_obj_t *q_tail;
 
+  pthread_mutex_t lock;
+
   double prob;
   int threshold;
 } LRU_Prob_params_t;
@@ -82,6 +84,11 @@ cache_t *LRU_Prob_init(const common_cache_params_t ccache_params,
   }
 
   params->threshold = (int)1.0 / params->prob;
+  int res = pthread_mutex_init(&params->lock, NULL);
+  if (res != 0) {
+    ERROR("mutex init failed\n");
+    exit(1);
+  }
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "LRU_Prob_%lf",
            params->prob);
 
@@ -143,12 +150,17 @@ static cache_obj_t* LRU_Prob_find(cache_t *cache, const request_t *req,
 
   cache_obj_t *cached_obj = cache_find_base(cache, req, update_cache);
   if (cached_obj != NULL && likely(update_cache)) {
+    // use atomic add for freq
     cached_obj->misc.freq += 1;
+    // TODO: check the correctness of this code
     cached_obj->misc.next_access_vtime = req->next_access_vtime;
 
+
+    pthread_mutex_lock(&params->lock);
     if (next_rand() % params->threshold == 0) {
       move_obj_to_head(&params->q_head, &params->q_tail, cached_obj);
     }
+    pthread_mutex_unlock(&params->lock);
   }
 
   return cached_obj;
@@ -168,7 +180,9 @@ static cache_obj_t* LRU_Prob_find(cache_t *cache, const request_t *req,
 static cache_obj_t *LRU_Prob_insert(cache_t *cache, const request_t *req) {
   LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_insert_base(cache, req);
+  pthread_mutex_lock(&params->lock);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+  pthread_mutex_unlock(&params->lock);
 
   return obj;
 }
@@ -199,10 +213,12 @@ static cache_obj_t *LRU_Prob_to_evict(cache_t *cache, const request_t *req) {
  * @param evicted_obj if not NULL, return the evicted object to caller
  */
 static void LRU_Prob_evict(cache_t *cache, const request_t *req) {
-  printf("lruprob evict\n");
   LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
+
+  pthread_mutex_lock(&params->lock);
   cache_obj_t *obj_to_evict = params->q_tail;
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
+  pthread_mutex_unlock(&params->lock);
   cache_remove_obj_base(cache, obj_to_evict, true);
 }
 

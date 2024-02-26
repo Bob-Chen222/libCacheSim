@@ -79,6 +79,7 @@ cache_t *Clock_init(const common_cache_params_t ccache_params,
   params->q_tail = NULL;
   params->n_bit_counter = 1;
   params->max_freq = 1;
+  pthread_mutex_init(&params->lock, NULL);
 
   Clock_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
@@ -147,9 +148,11 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req,
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
+    pthread_mutex_lock(&obj->lock);
     if (obj->clock.freq < params->max_freq) {
       obj->clock.freq += 1;
     }
+    pthread_mutex_unlock(&obj->lock);
 #ifdef USE_BELADY
     obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -172,9 +175,11 @@ static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
 
   cache_obj_t *obj = cache_insert_base(cache, req);
-  prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
+  // pthread_mutex_lock(&params->lock);
+  prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
   obj->clock.freq = 0;
+  // pthread_mutex_unlock(&params->lock);
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -224,6 +229,7 @@ static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
 static void Clock_evict(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
 
+  // pthread_mutex_lock(&params->lock);
   cache_obj_t *obj_to_evict = params->q_tail;
   while (obj_to_evict->clock.freq >= 1) {
     obj_to_evict->clock.freq -= 1;
@@ -232,8 +238,9 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
     move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
     obj_to_evict = params->q_tail;
   }
-
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
+  // pthread_mutex_unlock(&params->lock);
+
   cache_evict_base(cache, obj_to_evict, true);
 }
 

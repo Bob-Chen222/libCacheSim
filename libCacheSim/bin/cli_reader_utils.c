@@ -260,20 +260,20 @@ void cal_working_set_size(reader_t *reader, int64_t *wss_obj,
   }
 
   INFO("calculating working set size...\n");
-  while (read_one_req(reader, req) == 0) {
-    if (scaling_factor > 1 && req->obj_id % scaling_factor != 0) {
-      continue;
-    }
+  // while (read_one_req(reader, req) == 0) {
+  //   if (scaling_factor > 1 && req->obj_id % scaling_factor != 0) {
+  //     continue;
+  //   }
 
-    if (g_hash_table_contains(obj_table, (gconstpointer)req->obj_id)) {
-      continue;
-    }
+  //   if (g_hash_table_contains(obj_table, (gconstpointer)req->obj_id)) {
+  //     continue;
+  //   }
 
-    g_hash_table_add(obj_table, (gpointer)req->obj_id);
+  //   g_hash_table_add(obj_table, (gpointer)req->obj_id);
 
-    *wss_obj += 1;
-    *wss_byte += req->obj_size;
-  }
+  //   *wss_obj += 1;
+  //   *wss_byte += req->obj_size;
+  // }
   *wss_obj *= scaling_factor;
   *wss_byte *= scaling_factor;
   INFO("working set size: %ld object %ld byte\n", (long)*wss_obj,

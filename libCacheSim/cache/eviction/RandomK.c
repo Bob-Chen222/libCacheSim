@@ -42,7 +42,7 @@ static cache_obj_t *RandomK_select(cache_t *cache, const int k);
 
 // ***********************************************************************
 // ****                                                               ****
-// ****                   end user facing functions                   ****
+// ****                   end user facing functi ons                   ****
 // ****                                                               ****
 // ****                       init, free, get                         ****
 // ***********************************************************************
@@ -135,7 +135,10 @@ static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
   //no need for blocking
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
+    // WARNING: need large lock but I don't want to use cache lock
+    // pthread_mutex_lock(&obj->lock);
     obj->RandomTwo.last_access_vtime = cache->n_req;
+    // pthread_mutex_unlock(&obj->lock);
   }
 
   return obj;
@@ -178,8 +181,9 @@ static cache_obj_t *RandomK_select(cache_t *cache, const int k) {
 
   for (int i = 1; i < k; i++) {
     cache_obj_t *obj = hashtable_rand_obj(cache->hashtable);
-    if (obj->RandomTwo.last_access_vtime < obj_to_evict->RandomTwo.last_access_vtime)
+    if (obj->RandomTwo.last_access_vtime < obj_to_evict->RandomTwo.last_access_vtime) {
       obj_to_evict = obj;
+    }
   }
   return obj_to_evict;
 }

@@ -272,45 +272,45 @@ reader_t *setup_reader(const char *const trace_path,
  * @return 0 if success, 1 if end of file
  */
 
-int read_n_req(reader_t *const reader, request_t *const req) {
-  if (reader->mmap_offset >= reader->file_size) {
-    DEBUG("read_one_req: end of file, current mmap_offset %zu, file size %zu\n",
-          reader->mmap_offset, reader->file_size);
-    req->valid = false;
-    return 1;
-  }
+// int read_n_req(reader_t *const reader, request_t *const req) {
+//   if (reader->mmap_offset >= reader->file_size) {
+//     DEBUG("read_one_req: end of file, current mmap_offset %zu, file size %zu\n",
+//           reader->mmap_offset, reader->file_size);
+//     req->valid = false;
+//     return 1;
+//   }
 
-  if (reader->cap_at_n_req > 1 && reader->n_read_req >= reader->cap_at_n_req) {
-    DEBUG("read_n_req: processed %ld requests capped by the user\n",
-          (long) reader->n_read_req);
-    req->valid = false;
-    return 1;
-  }
-  int status = 0;
-  if (reader->n_req_left > 0) {
-    reader->n_req_left -= 1;
-    req->clock_time = reader->last_req_clock_time;
+//   if (reader->cap_at_n_req > 1 && reader->n_read_req >= reader->cap_at_n_req) {
+//     DEBUG("read_n_req: processed %ld requests capped by the user\n",
+//           (long) reader->n_read_req);
+//     req->valid = false;
+//     return 1;
+//   }
+//   int status = 0;
+//   if (reader->n_req_left > 0) {
+//     reader->n_req_left -= 1;
+//     req->clock_time = reader->last_req_clock_time;
 
-  } else {
-    size_t offset_before_read = reader->mmap_offset;
+//   } else {
+//     size_t offset_before_read = reader->mmap_offset;
 
-    reader->n_read_req += reader->parallel_worker;
-    req->hv = 0;
-    req->ttl = -1;
-    req->valid = true;
+//     reader->n_read_req += reader->parallel_worker;
+//     req->hv = 0;
+//     req->ttl = -1;
+//     req->valid = true;
 
-    switch (reader->trace_type) {
-      case ORACLE_GENERAL_TRACE:
-        status = oracleGeneralBin_read_n_req(reader, req);
-        break;
-      default:
-        ERROR(
-            "only support oracleGeneral for parallel access for now but have type:"
-            "%c\n",
-            reader->trace_type);
-        abort();
-    }
-}
+//     switch (reader->trace_type) {
+//       case ORACLE_GENERAL_TRACE:
+//         status = oracleGeneralBin_read_n_req(reader, req);
+//         break;
+//       default:
+//         ERROR(
+//             "only support oracleGeneral for parallel access for now but have type:"
+//             "%c\n",
+//             reader->trace_type);
+//         abort();
+//     }
+// }
 
 /**
  * @brief read one request from trace file

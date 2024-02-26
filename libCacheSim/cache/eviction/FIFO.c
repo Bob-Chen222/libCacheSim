@@ -67,6 +67,7 @@ cache_t *FIFO_init(const common_cache_params_t ccache_params,
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   params->q_head = NULL;
   params->q_tail = NULL;
+  pthread_mutex_init(&params->lock, NULL);
 
   return cache;
 }
@@ -139,7 +140,6 @@ static cache_obj_t *FIFO_insert(cache_t *cache, const request_t *req) {
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_insert_base(cache, req);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-  // print_FIFO(cache);
 
   return obj;
 }

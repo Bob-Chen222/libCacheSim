@@ -19,6 +19,8 @@ typedef struct {
   uint64_t delay_time; // determines how often promotion is performed
   cache_obj_t *d_head;
   cache_obj_t *d_tail;
+
+  pthread_mutex_t lock;
 } LRU_delay_params_t;
 
 static const char *DEFAULT_PARAMS = "delay-time=1";
@@ -84,6 +86,7 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
   params->q_tail = NULL;
   params->d_head = NULL;
   params->d_tail = NULL;
+  pthread_mutex_init(&params->lock, NULL);
   cache->eviction_params = params;
 
   if (cache_specific_params != NULL) {
@@ -160,6 +163,8 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
 
   // no matter what, we need to check the buffer and see i
   //f there is a thing that we will reinsert
+
+  pthread_mutex_lock(&params->lock);
   cache_obj_t* obj_reinserted = params->d_tail;
   request_t *local_req = new_request();
   copy_cache_obj_to_request(local_req, obj_reinserted);
@@ -186,6 +191,7 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
     dummy_req->obj_id = 0;
     prepend_obj_to_head(&params->d_head, &params->d_tail, create_cache_obj_from_request(dummy_req));
   }
+  pthread_mutex_unlock(&params->lock);
   return cache_obj;
 }
 
@@ -202,7 +208,9 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
 static cache_obj_t *LRU_delay_insert(cache_t *cache, const request_t *req) {
   LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_insert_base(cache, req);
+  pthread_mutex_lock(&params->lock);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+  pthread_mutex_unlock(&params->lock);
 
   return obj;
 }
@@ -236,8 +244,10 @@ static cache_obj_t *LRU_delay_to_evict(cache_t *cache, const request_t *req) {
  */
 static void LRU_delay_evict(cache_t *cache, const request_t *req) {
   LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+  pthread_mutex_lock(&params->lock);
   cache_obj_t *obj_to_evict = params->q_tail;
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
+  pthread_mutex_unlock(&params->lock);
   cache_remove_obj_base(cache, obj_to_evict, true);
 }
 

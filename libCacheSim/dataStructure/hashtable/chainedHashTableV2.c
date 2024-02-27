@@ -82,6 +82,7 @@ static inline void add_to_bucket(hashtable_t *hashtable,
   // printf("exit_bucket\n");
   if (old -> hash_next == NULL) {
     old -> hash_next = cache_obj;
+    hashtable->ptr_table[hv] = old;
     return;
   }
   cache_obj_t *head_ptr = old -> hash_next;

@@ -43,6 +43,7 @@ extern "C" {
 static void _chained_hashtable_expand_v2(hashtable_t *hashtable);
 static void print_hashbucket_item_distribution(const hashtable_t *hashtable);
 static bool compare_and_set(unsigned long* ptr, unsigned long oldval, unsigned long newval);
+// static double gettime(void);
 
 /************************ helper func ************************/
 /**
@@ -60,6 +61,7 @@ static inline cache_obj_t *_last_obj_in_bucket(const hashtable_t *hashtable,
 /* add an object to the hashtable */
 static inline void add_to_bucket(hashtable_t *hashtable,
                                  cache_obj_t *cache_obj) {
+  // printf("add_to_bucket\n");
   uint64_t hv = get_hash_value_int_64(&cache_obj->obj_id) &
                 hashmask(hashtable->hashpower);
 
@@ -69,10 +71,15 @@ static inline void add_to_bucket(hashtable_t *hashtable,
   cache_obj_t *old = (cache_obj_t*)((uint64_t)hashtable->ptr_table[hv] & mask);
   cache_obj_t *new = (cache_obj_t*)((uint64_t)hashtable->ptr_table[hv] | 1);
 
+  // printf("cur_value is %lu\n", (unsigned long)hashtable->ptr_table[hv]);
+  // printf("old is %lu\n", (unsigned long)old);
+  // printf("new is %lu\n", (unsigned long)new);
+
   while (!compare_and_set((unsigned long*)&dummy, (unsigned long)old, (unsigned long)new)) {
   }
 
   // at this point the mask is 1
+  // printf("exit_bucket\n");
   if (old -> hash_next == NULL) {
     old -> hash_next = cache_obj;
     return;
@@ -80,8 +87,10 @@ static inline void add_to_bucket(hashtable_t *hashtable,
   cache_obj_t *head_ptr = old -> hash_next;
 
   cache_obj->hash_next = head_ptr;
-  hashtable->ptr_table[hv]->hash_next = cache_obj;
+  old->hash_next = cache_obj;
   // this only is correct when we can safely switch at any point when completing the final step
+  hashtable->ptr_table[hv] = old;
+
 
 #ifdef HASHTABLE_DEBUG
   cache_obj_t *curr_obj = cachec_obj->hash_next;
@@ -130,13 +139,21 @@ hashtable_t *create_chained_hashtable_v2(const uint16_t hashpower) {
 
 cache_obj_t *chained_hashtable_find_obj_id_v2(const hashtable_t *hashtable,
                                               const obj_id_t obj_id) {
+
+  // printf("hashfind\n");
   // add readlock
   // we will use the same lock
+  double start = gettime();
   uint64_t mask = ~(1); //todo: check!!
   cache_obj_t *cache_obj = NULL;
   uint64_t hv = get_hash_value_int_64(&obj_id);
   hv = hv & hashmask(hashtable->hashpower);
+  // printf("before\n");
 
+  // printf("dummy is %lu\n", (unsigned long)hashtable->ptr_table[hv]);
+  // printf("cur_value is %lu\n", (unsigned long)hashtable->ptr_table[hv]);
+  // printf("new is %lu\n", (unsigned long)hashtable->ptr_table[hv] | 1);
+  // printf("hv is %lu\n", (unsigned long)hv);
   cache_obj_t *dummy = hashtable->ptr_table[hv];
   cache_obj_t *old = (cache_obj_t*)((uint64_t)hashtable->ptr_table[hv] & mask);
   cache_obj_t *new = (cache_obj_t*)((uint64_t)hashtable->ptr_table[hv] | 1);
@@ -144,46 +161,56 @@ cache_obj_t *chained_hashtable_find_obj_id_v2(const hashtable_t *hashtable,
   while (!compare_and_set((unsigned long*)&dummy, (unsigned long)old, (unsigned long)new)) {
   }
 
-  cache_obj = hashtable->ptr_table[hv] -> hash_next;
+  cache_obj = old -> hash_next;
 
   while (cache_obj) {
     if (cache_obj->obj_id == obj_id) {
+      hashtable->ptr_table[hv] = old;
       return cache_obj;
     }
     cache_obj = cache_obj->hash_next;
   }
-  hashtable->ptr_table[hv] = (cache_obj_t*)((uint64_t)hashtable->ptr_table[hv] & mask);
+  hashtable->ptr_table[hv] = old;
+  double end = gettime();
+  // printf("findtime: %lf\n", end - start);
   return cache_obj;
 }
 
 cache_obj_t *chained_hashtable_find_v2(const hashtable_t *hashtable,
                                        const request_t *req) {
+  // printf("called find\n");
   return chained_hashtable_find_obj_id_v2(hashtable, req->obj_id);
 }
 
 cache_obj_t *chained_hashtable_find_obj_v2(const hashtable_t *hashtable,
                                            const cache_obj_t *obj_to_find) {
+
   return chained_hashtable_find_obj_id_v2(hashtable, obj_to_find->obj_id);
 }
 
 /* the user needs to make sure the added object is not in the hash table */
 cache_obj_t *chained_hashtable_insert_v2(hashtable_t *hashtable,
                                          const request_t *req) {
+  // printf("hash insert\n");
+  double start = gettime();
   cache_obj_t *new_cache_obj = create_cache_obj_from_request(req);
   add_to_bucket(hashtable, new_cache_obj);
   // use atomic add instead
   atomic_fetch_add(&hashtable->n_obj, 1);
+  double end = gettime();
+  // printf("insertime: %lf\n", end - start);
   return new_cache_obj;
 }
 
 /* the user needs to make sure the added object is not in the hash table */
 cache_obj_t *chained_hashtable_insert_obj_v2(hashtable_t *hashtable,
                                              cache_obj_t *cache_obj) {
+  printf("no call insertobj\n");
   DEBUG_ASSERT(hashtable->external_obj);
   
-  if (hashtable->n_obj > (uint64_t)(hashsize(hashtable->hashpower) *
-                                    CHAINED_HASHTABLE_EXPAND_THRESHOLD))
-    _chained_hashtable_expand_v2(hashtable);
+  // if (hashtable->n_obj > (uint64_t)(hashsize(hashtable->hashpower) *
+  //                                   CHAINED_HASHTABLE_EXPAND_THRESHOLD))
+  //   _chained_hashtable_expand_v2(hashtable);
 
   add_to_bucket(hashtable, cache_obj);
   hashtable->n_obj += 1;
@@ -194,20 +221,31 @@ cache_obj_t *chained_hashtable_insert_obj_v2(hashtable_t *hashtable,
 /* you need to free the extra_metadata before deleting from hash table */
 void chained_hashtable_delete_v2(hashtable_t *hashtable,
                                  cache_obj_t *cache_obj) {
+
+  // printf("hash delete\n");
   // use atomic sub instead
   // first check whether the whole hashtable is in the process of expanding
+  double start = gettime();
   uint64_t mask = ~(1); //1111...0
-  cache_obj_t *old = (cache_obj_t*)((uint64_t)hashtable->ptr_table & mask);
-  cache_obj_t *new = (cache_obj_t*)((uint64_t)hashtable->ptr_table | 1);
   //at this moment the expand completes
   atomic_fetch_add(&hashtable->n_obj, -1);
   uint64_t hv = get_hash_value_int_64(&cache_obj->obj_id) &
                 hashmask(hashtable->hashpower);
-  while (!compare_and_set((unsigned long*)&hashtable->ptr_table[hv], (unsigned long)old, (unsigned long)new)) {
+  cache_obj_t *old = (cache_obj_t*)((uint64_t)hashtable->ptr_table[hv] & mask);
+  cache_obj_t *new = (cache_obj_t*)((uint64_t)hashtable->ptr_table[hv] | 1);
+  cache_obj_t *dummy = hashtable->ptr_table[hv];
+  // printf("delete hang\n");
+  // printf("cur_value is %lu\n", (unsigned long)dummy);
+  // printf("old is %lu\n", (unsigned long)old);
+  // printf("new is %lu\n", (unsigned long)new);
+  while (!compare_and_set((unsigned long*)&dummy, (unsigned long)old, (unsigned long)new)) {
   }
+  // printf("after delete hang\n");
   if ((old -> hash_next) == cache_obj) {
     old->hash_next = cache_obj->hash_next;
     if (!hashtable->external_obj) free_cache_obj(cache_obj);
+    double end = gettime();
+    // printf("deletetime: %lf\n", end - start);
     return;
   }
 
@@ -242,6 +280,7 @@ void chained_hashtable_delete_v2(hashtable_t *hashtable,
 bool chained_hashtable_try_delete_v2(hashtable_t *hashtable,
                                      cache_obj_t *cache_obj) {
   static int max_chain_len = 1;
+  printf("no call try delete\n");
 
   uint64_t hv = get_hash_value_int_64(&cache_obj->obj_id) &
                 hashmask(hashtable->hashpower);
@@ -303,6 +342,7 @@ bool chained_hashtable_try_delete_v2(hashtable_t *hashtable,
  */
 bool chained_hashtable_delete_obj_id_v2(hashtable_t *hashtable,
                                         const obj_id_t obj_id) {
+  printf("no call delete objid\n");
   uint64_t hv = get_hash_value_int_64(&obj_id) & hashmask(hashtable->hashpower);
   cache_obj_t *cur_obj = hashtable->ptr_table[hv];
   // the hash bucket is empty
@@ -335,16 +375,17 @@ bool chained_hashtable_delete_obj_id_v2(hashtable_t *hashtable,
 }
 
 cache_obj_t *chained_hashtable_rand_obj_v2(const hashtable_t *hashtable) {
+  printf("no call randobj\n");
   uint64_t pos = next_rand() & hashmask(hashtable->hashpower);
   while (hashtable->ptr_table[pos] == NULL)
     pos = next_rand() & hashmask(hashtable->hashpower);
   // add readlock
   uint64_t mask = ~(1);
-  cache_obj_t *dummy = hashtable->ptr_table[pos];
+  // cache_obj_t *dummy = hashtable->ptr_table[pos];
   cache_obj_t *old = (cache_obj_t*)((uint64_t)hashtable->ptr_table[pos] & mask);
-  cache_obj_t *new = (cache_obj_t*)((uint64_t)hashtable->ptr_table[pos] | 1);
-  while (!compare_and_set((unsigned long*)&dummy, (unsigned long) old, (unsigned long) new)) {
-  }
+  // cache_obj_t *new = (cache_obj_t*)((uint64_t)hashtable->ptr_table[pos] | 1);
+  // while (!compare_and_set((unsigned long*)&dummy, (unsigned long) old, (unsigned long) new)) {
+  // }
   cache_obj_t *cache_obj = hashtable->ptr_table[pos]->hash_next;
   hashtable->ptr_table[pos] = old;
   return cache_obj;
@@ -373,6 +414,7 @@ void free_chained_hashtable_v2(hashtable_t *hashtable) {
 
 /* grows the hashtable to the next power of 2. */
 static void _chained_hashtable_expand_v2(hashtable_t *hashtable) {
+  printf("no call expand\n");
   cache_obj_t **old_table = hashtable->ptr_table;
   hashtable->ptr_table =
       my_malloc_n(cache_obj_t *, hashsize(++hashtable->hashpower));
@@ -410,9 +452,11 @@ static void _chained_hashtable_expand_v2(hashtable_t *hashtable) {
 }
 
 void check_hashtable_integrity_v2(const hashtable_t *hashtable) {
+  printf("no call integrity\n");
   cache_obj_t *cur_obj, *next_obj;
+  uint64_t mask = ~(1);
   for (uint64_t i = 0; i < hashsize(hashtable->hashpower); i++) {
-    cur_obj = hashtable->ptr_table[i];
+    cur_obj = ((cache_obj_t*)((uint64_t)hashtable->ptr_table[i] & mask)) -> hash_next;
     while (cur_obj != NULL) {
       next_obj = cur_obj->hash_next;
       assert(i == (get_hash_value_int_64(&cur_obj->obj_id) &
@@ -466,6 +510,13 @@ static bool compare_and_set(unsigned long* ptr, unsigned long oldval, unsigned l
     // The function returns true if the comparison is successful and newval was written.
     return __sync_bool_compare_and_swap(ptr, oldval, newval);
 }
+
+// static double gettime(void) {
+//   struct timeval tv;
+//   gettimeofday(&tv, NULL);
+
+//   return tv.tv_sec + tv.tv_usec / 1000000.0;
+// }
 
 #ifdef __cplusplus
 }

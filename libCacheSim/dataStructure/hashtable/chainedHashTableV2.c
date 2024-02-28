@@ -134,6 +134,7 @@ hashtable_t *create_chained_hashtable_v2(const uint16_t hashpower) {
     request_t* req = new_request();
     cache_obj_t* cache_obj = create_cache_obj_from_request(req);
     hashtable->ptr_table[i] = cache_obj;
+    free_request(req);
   }
   return hashtable;
 }

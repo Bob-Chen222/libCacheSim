@@ -76,7 +76,6 @@ cache_t *LRU_init(const common_cache_params_t ccache_params,
   LRU_params_t *params = malloc(sizeof(LRU_params_t));
   params->q_head = NULL;
   params->q_tail = NULL;
-  pthread_mutex_init(&params->lock, NULL);
   cache->eviction_params = params;
 
   return cache;
@@ -133,7 +132,7 @@ static cache_obj_t *LRU_find(cache_t *cache, const request_t *req,
   LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
   cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
 
-  pthread_mutex_lock(&cache->lock);
+  // pthread_mutex_lock(&cache->lock);
   if (cache_obj && likely(update_cache)) {
     /* lru_head is the newest, move cur obj to lru_head */
 #ifdef USE_BELADY
@@ -141,7 +140,7 @@ static cache_obj_t *LRU_find(cache_t *cache, const request_t *req,
 #endif
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
   }
-  pthread_mutex_unlock(&cache->lock);
+  // pthread_mutex_unlock(&cache->lock);
   return cache_obj;
 }
 
@@ -191,6 +190,7 @@ static cache_obj_t *LRU_to_evict(cache_t *cache, const request_t *req) {
  * @param req not used
  */
 static void LRU_evict(cache_t *cache, const request_t *req) {
+  printf("enter LRU evict\n");
   LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
 
   cache_obj_t *obj_to_evict = params->q_tail;

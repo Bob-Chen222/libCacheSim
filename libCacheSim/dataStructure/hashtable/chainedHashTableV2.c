@@ -144,7 +144,6 @@ cache_obj_t *chained_hashtable_find_obj_id_v2(const hashtable_t *hashtable,
   // printf("hashfind\n");
   // add readlock
   // we will use the same lock
-  double start = gettime();
   uint64_t mask = ~(1); //todo: check!!
   cache_obj_t *cache_obj = NULL;
   uint64_t hv = get_hash_value_int_64(&obj_id);
@@ -172,7 +171,6 @@ cache_obj_t *chained_hashtable_find_obj_id_v2(const hashtable_t *hashtable,
     cache_obj = cache_obj->hash_next;
   }
   hashtable->ptr_table[hv] = old;
-  double end = gettime();
   // printf("findtime: %lf\n", end - start);
   return cache_obj;
 }
@@ -193,12 +191,10 @@ cache_obj_t *chained_hashtable_find_obj_v2(const hashtable_t *hashtable,
 cache_obj_t *chained_hashtable_insert_v2(hashtable_t *hashtable,
                                          const request_t *req) {
   // printf("hash insert\n");
-  double start = gettime();
   cache_obj_t *new_cache_obj = create_cache_obj_from_request(req);
   add_to_bucket(hashtable, new_cache_obj);
   // use atomic add instead
   atomic_fetch_add(&hashtable->n_obj, 1);
-  double end = gettime();
   // printf("insertime: %lf\n", end - start);
   return new_cache_obj;
 }
@@ -226,7 +222,6 @@ void chained_hashtable_delete_v2(hashtable_t *hashtable,
   // printf("hash delete\n");
   // use atomic sub instead
   // first check whether the whole hashtable is in the process of expanding
-  double start = gettime();
   uint64_t mask = ~(1); //1111...0
   //at this moment the expand completes
   atomic_fetch_add(&hashtable->n_obj, -1);
@@ -245,7 +240,6 @@ void chained_hashtable_delete_v2(hashtable_t *hashtable,
   if ((old -> hash_next) == cache_obj) {
     old->hash_next = cache_obj->hash_next;
     if (!hashtable->external_obj) free_cache_obj(cache_obj);
-    double end = gettime();
     // printf("deletetime: %lf\n", end - start);
     return;
   }

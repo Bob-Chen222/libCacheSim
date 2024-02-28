@@ -67,7 +67,6 @@ cache_t *FIFO_init(const common_cache_params_t ccache_params,
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   params->q_head = NULL;
   params->q_tail = NULL;
-  pthread_mutex_init(&params->lock, NULL);
 
   return cache;
 }

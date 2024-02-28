@@ -21,7 +21,6 @@ typedef struct parallel_simulator_params {
   uint64_t num_threads;
   reader_t* reader;
   cache_t* cache;
-  pthread_barrier_t barrier;
 } parallel_simulator_params_t;
 
 typedef struct thread_params {
@@ -46,6 +45,7 @@ void* thread_function(void* arg){
   request_t* req = new_request();
   double before_time = gettime();
   while (mmap_offset < params->reader->file_size) {
+    // printf("time: %f\n", gettime()- before_time);
     uint32_t real_time = *(uint32_t *)start;
     uint64_t obj_id = *(uint64_t *)(start + 4);
     uint32_t obj_size = *(uint32_t *)(start + 12);
@@ -81,6 +81,7 @@ void* thread_function(void* arg){
     // add a barrier
     // pthread_barrier_wait(&params->barrier);
   }
+  printf("exit loop!!!!!\n");
   double after_time = gettime();
   double runtime = after_time - before_time;
   // only used for oracleGeneralBin
@@ -104,8 +105,6 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
   // create num_threads threads
   printf("num_thread: %lu\n", num_threads);
   pthread_t threads[num_threads];
-  // pthread_barrier_t barrier;
-  // pthread_barrier_init(&barrier, NULL, num_threads);
   thread_params_t* thread_params = (thread_params_t*)malloc(sizeof(thread_params_t) * num_threads);
   for (uint64_t i = 0; i < num_threads; i++) {
     parallel_simulator_params_t* params = (parallel_simulator_params_t*)malloc(sizeof(parallel_simulator_params_t));
@@ -164,6 +163,12 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
   }
   fprintf(output_file, "%s\n", output_str);
   fclose(output_file);
+
+  // do the free
+  for (uint64_t i = 0; i < num_threads; i++) {
+    free(thread_params[i].params);
+  }
+  free(thread_params);
 
 #if defined(TRACK_EVICTION_V_AGE)
   while (cache->get_occupied_byte(cache) > 0) {

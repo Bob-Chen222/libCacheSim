@@ -239,6 +239,7 @@ static void init_arg(struct arguments *args) {
 }
 
 void free_arg(struct arguments *args) {
+  printf("called free args\n");
   if (args->eviction_params) {
     free(args->eviction_params);
   }
@@ -250,10 +251,11 @@ void free_arg(struct arguments *args) {
     free(args->eviction_algo[i]);
   }
 
+
   // free in simulator thread
-  // for (int i = 0; i < args->n_eviction_algo * args->n_cache_size; i++) {
-  //     args->caches[i]->cache_free(args->caches[i]);
-  // }
+  for (int i = 0; i < args->n_eviction_algo * args->n_cache_size; i++) {
+      args->caches[i]->cache_free(args->caches[i]);
+  }
 
   close_reader(args->reader);
 }

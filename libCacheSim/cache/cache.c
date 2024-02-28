@@ -45,6 +45,7 @@ cache_t *cache_struct_init(const char *const cache_name,
   cache->can_insert = cache_can_insert_default;
   cache->get_occupied_byte = cache_get_occupied_byte_default;
   cache->get_n_obj = cache_get_n_obj_default;
+  pthread_mutex_init(&cache->lock, NULL);
 
   /* this option works only when eviction age tracking
    * is on in config.h */
@@ -58,6 +59,7 @@ cache_t *cache_struct_init(const char *const cache_name,
   int hash_power = HASH_POWER_DEFAULT;
   if (params.hashpower > 0 && params.hashpower < 40)
     hash_power = params.hashpower;
+  // printf("hash power: %d\n", hash_power);
   cache->hashtable = create_hashtable(hash_power);
   hashtable_add_ptr_to_monitoring(cache->hashtable, &cache->q_head);
   hashtable_add_ptr_to_monitoring(cache->hashtable, &cache->q_tail);
@@ -248,17 +250,17 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
   //if use this lock, then all the codes become atomic and we don't need to lock in
   //sub function
   pthread_mutex_lock(&cache->lock);
-  if (!cache->can_insert(cache, req)) {
-    VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
-             req->obj_id);
-  } else {
-    while (cache->get_occupied_byte(cache) + req->obj_size +
-               cache->obj_md_size >
-           cache->cache_size) {
-      cache->evict(cache, req);
-    }
-    cache->insert(cache, req);
+  
+  while (cache->get_occupied_byte(cache) + req->obj_size +
+              cache->obj_md_size >
+          cache->cache_size) {
+    // printf("before evict\n");
+    cache->evict(cache, req);
+    // printf("after evict\n");
   }
+  // printf("before insert\n");
+  cache->insert(cache, req);
+  // printf("after insert\n");
   pthread_mutex_unlock(&cache->lock);
 
   if (cache->prefetcher && cache->prefetcher->prefetch) {

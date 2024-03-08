@@ -50,6 +50,13 @@ typedef struct request {
   int16_t n_param;
   int8_t method;
 
+  int64_t r1;
+  int64_t r2;
+  int64_t r3;
+  int64_t r4;
+  int64_t r5;
+  int64_t r6;
+
   /* used in trace analysis */
   int64_t vtime_since_last_access;
   int64_t rtime_since_last_access;

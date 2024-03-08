@@ -178,6 +178,9 @@ bool cache_can_insert_default(cache_t *cache, const request_t *req) {
 cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
                              const bool update_cache) {
   cache_obj_t *cache_obj = hashtable_find(cache->hashtable, req);
+  if (cache_obj != NULL && update_cache) {
+    printf("hit!\n");
+  }
 
   // "update_cache = true" means that it is a real user request, use handle_find
   // to update prefetcher's state
@@ -229,7 +232,7 @@ cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
  */
 bool cache_get_base(cache_t *cache, const request_t *req) {
   // use atomic add
-  atomic_fetch_add(&cache->n_req, 1);
+  // atomic_fetch_add(&cache->n_req, 1);
 
   VERBOSE("******* %s req %ld, obj %ld, obj_size %ld, cache size %ld/%ld\n",
           cache->cache_name, cache->n_req, req->obj_id, req->obj_size,
@@ -263,10 +266,10 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
   // printf("after insert\n");
   pthread_mutex_unlock(&cache->lock);
 
-  if (cache->prefetcher && cache->prefetcher->prefetch) {
-    cache->prefetcher->prefetch(cache, req);
-  }
-
+  // if (cache->prefetcher && cache->prefetcher->prefetch) {
+  //   cache->prefetcher->prefetch(cache, req);
+  // }
+  
   return hit;
 }
 
@@ -302,10 +305,8 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   cache_obj->create_time = CURR_TIME(cache, req);
 #endif
 
-  // pthread_mutex_lock(&cache_obj->lock);
   cache_obj->misc.next_access_vtime = req->next_access_vtime;
   cache_obj->misc.freq = 0;
-  // pthread_mutex_unlock(&cache_obj->lock);
 
   return cache_obj;
 }

@@ -136,6 +136,7 @@ static cache_obj_t *FIFO_find(cache_t *cache, const request_t *req,
  * @return the inserted object
  */
 static cache_obj_t *FIFO_insert(cache_t *cache, const request_t *req) {
+  printf("no fifo insert\n");
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_insert_base(cache, req);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
@@ -154,6 +155,7 @@ static cache_obj_t *FIFO_insert(cache_t *cache, const request_t *req) {
  * @return the object to be evicted
  */
 static cache_obj_t *FIFO_to_evict(cache_t *cache, const request_t *req) {
+  printf("no fifo toevict\n");
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   return params->q_tail;
 }
@@ -168,6 +170,7 @@ static cache_obj_t *FIFO_to_evict(cache_t *cache, const request_t *req) {
  * @param evicted_obj if not NULL, return the evicted object to caller
  */
 static void FIFO_evict(cache_t *cache, const request_t *req) {
+  printf("no fifo evict\n");
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   cache_obj_t *obj_to_evict = params->q_tail;
   DEBUG_ASSERT(params->q_tail != NULL);
@@ -202,6 +205,7 @@ static void FIFO_evict(cache_t *cache, const request_t *req) {
  * cache
  */
 static bool FIFO_remove(cache_t *cache, const obj_id_t obj_id) {
+  printf("no fifo remove\n");
   cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_id);
   if (obj == NULL) {
     return false;
@@ -216,6 +220,7 @@ static bool FIFO_remove(cache_t *cache, const obj_id_t obj_id) {
 }
 
 static void print_FIFO(cache_t *cache) {
+  printf("no fifo print\n");
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   printf("FIFO queue: ");
   cache_obj_t *obj = params->q_head;

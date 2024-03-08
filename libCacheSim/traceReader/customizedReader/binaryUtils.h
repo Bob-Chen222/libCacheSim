@@ -23,7 +23,7 @@ static inline char *_parallel_read_bytes(reader_t *reader, const int num_worker)
 }
 
 /* read decompressed data file */
-static inline char *_read_bytes(reader_t *reader) {
+static inline char _read_bytes(reader_t *reader) {
   if (reader->mmap_offset >= reader->file_size) {
     return NULL;
   }

@@ -28,6 +28,7 @@ typedef struct hashtable {
   };
   uint64_t n_obj;
   uint16_t hashpower;
+  pthread_mutex_t *mutexes;
   bool external_obj; /* whether the object should be allocated by hash table,
                         this should be true most of the time */
   bool transtion;    /* whether the hashtable is in transition state */

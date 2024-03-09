@@ -48,6 +48,7 @@ void* thread_function(void* arg){
   request_t* req = new_request();
   mmap_offset = 0;
   cache_t* cache = thread_params->cache;
+  printf("inside thread occupied bytes: %lu\n", cache->get_occupied_byte(cache));
   cache_get_func_ptr get = cache->get;
   // printf("before loading\n");
   // printf("allocated: %.4f\n", (sizeof(request_t) * thread_params->reader->file_size / item_size / 1000000000.0));
@@ -88,10 +89,10 @@ void* thread_function(void* arg){
 
 
     // // create a request
-    // req->clock_time = real_time;
-    // req->obj_id = obj_id;
-    // req->obj_size = obj_size;
-    // req->next_access_vtime = next_access_vtime;
+    req->clock_time = real_time;
+    req->obj_id = obj_id;
+    req->obj_size = obj_size;
+    req->next_access_vtime = next_access_vtime;
 
     // // simulate the request
     // DEBUG_ASSERT(params!= NULL);
@@ -133,6 +134,7 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
   set_rand_seed(rand());
 
   printf("triggered parallel_simulate\n");
+  // printf("cache simulation occupied bytes: %lu\n", cache->get_occupied_byte(cache));
 
   // preprocessing
   // first version should have lock each round

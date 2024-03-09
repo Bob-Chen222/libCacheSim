@@ -45,7 +45,7 @@ cache_t *cache_struct_init(const char *const cache_name,
   cache->can_insert = cache_can_insert_default;
   cache->get_occupied_byte = cache_get_occupied_byte_default;
   cache->get_n_obj = cache_get_n_obj_default;
-  pthread_mutex_init(&cache->lock, NULL);
+  pthread_spin_init(&cache->lock, 0);
 
   /* this option works only when eviction age tracking
    * is on in config.h */
@@ -178,9 +178,6 @@ bool cache_can_insert_default(cache_t *cache, const request_t *req) {
 cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
                              const bool update_cache) {
   cache_obj_t *cache_obj = hashtable_find(cache->hashtable, req);
-  if (cache_obj != NULL && update_cache) {
-    printf("hit!\n");
-  }
 
   // "update_cache = true" means that it is a real user request, use handle_find
   // to update prefetcher's state
@@ -252,19 +249,18 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
 
   //if use this lock, then all the codes become atomic and we don't need to lock in
   //sub function
-  pthread_mutex_lock(&cache->lock);
   
-  while (cache->get_occupied_byte(cache) + req->obj_size +
-              cache->obj_md_size >
+  pthread_spin_lock(&cache->lock);
+  if (cache->get_occupied_byte(cache) + req->obj_size >
           cache->cache_size) {
-    // printf("before evict\n");
     cache->evict(cache, req);
     // printf("after evict\n");
   }
-  // printf("before insert\n");
   cache->insert(cache, req);
+  pthread_spin_unlock(&cache->lock);
+  // printf("before insert\n");
+  // pthread_mutex_unlock(&cache->lock);
   // printf("after insert\n");
-  pthread_mutex_unlock(&cache->lock);
 
   // if (cache->prefetcher && cache->prefetcher->prefetch) {
   //   cache->prefetcher->prefetch(cache, req);
@@ -291,7 +287,7 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   // int64_t obj_md_size = (int64_t)atomic_load(&cache->obj_md_size);
   // atomic_fetch_add(&cache->occupied_byte, obj_size + obj_md_size);
   // atomic_fetch_add(&cache->n_obj, 1);
-  cache->occupied_byte += cache_obj->obj_size + cache->obj_md_size;
+  cache->occupied_byte += cache_obj->obj_size;
   cache->n_obj += 1;
 
 #ifdef SUPPORT_TTL
@@ -305,6 +301,7 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   cache_obj->create_time = CURR_TIME(cache, req);
 #endif
 
+DEBUG_ASSERT(
   cache_obj->misc.next_access_vtime = req->next_access_vtime;
   cache_obj->misc.freq = 0;
 
@@ -352,7 +349,7 @@ void cache_evict_base(cache_t *cache, cache_obj_t *obj,
 void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
                            bool remove_from_hashtable) {
   DEBUG_ASSERT(cache->occupied_byte >= obj->obj_size + cache->obj_md_size);
-  cache->occupied_byte -= (obj->obj_size + cache->obj_md_size);
+  cache->occupied_byte -= 1;
   cache->n_obj -= 1;
   if (remove_from_hashtable) {
     hashtable_delete(cache->hashtable, obj);

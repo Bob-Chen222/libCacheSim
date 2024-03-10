@@ -235,16 +235,16 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
           cache->cache_name, cache->n_req, req->obj_id, req->obj_size,
           cache->get_occupied_byte(cache), cache->cache_size);
 
-  // cache_obj_t *obj = cache->find(cache, req, true);
-  // bool hit = (obj != NULL);
+  cache_obj_t *obj = cache->find(cache, req, true);
+  bool hit = (obj != NULL);
 
-  // if (hit) {
-  //   VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
-  //   if (cache->prefetcher && cache->prefetcher->prefetch) {
-  //   cache->prefetcher->prefetch(cache, req);
-  //   }
-  //   return hit;
-  // }
+  if (hit) {
+    VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
+    if (cache->prefetcher && cache->prefetcher->prefetch) {
+    cache->prefetcher->prefetch(cache, req);
+    }
+    return hit;
+  }
 
 
   //if use this lock, then all the codes become atomic and we don't need to lock in
@@ -253,11 +253,11 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
   pthread_spin_lock(&cache->lock);
 
   cache->insert(cache, req);
-  // if (cache->get_occupied_byte(cache) + req->obj_size >
-  //         cache->cache_size) {
-  //   cache->evict(cache, req);
-  //   // printf("after evict\n");
-  // }
+  if (cache->get_occupied_byte(cache) + req->obj_size >
+          cache->cache_size) {
+    cache->evict(cache, req);
+    // printf("after evict\n");
+  }
   pthread_spin_unlock(&cache->lock);
   // printf("before insert\n");
   // pthread_mutex_unlock(&cache->lock);

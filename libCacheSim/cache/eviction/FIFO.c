@@ -137,8 +137,8 @@ static cache_obj_t *FIFO_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *FIFO_insert(cache_t *cache, const request_t *req) {
   // printf("no fifo insert\n");
-  cache_obj_t *obj = cache_insert_base(cache, req) - 1;
-  if (!((unsigned long)obj & 1)){
+  cache_obj_t *obj = cache_insert_base(cache, req);
+  if (obj != NULL){
     FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
     prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
   }
@@ -177,16 +177,12 @@ static void FIFO_evict(cache_t *cache, const request_t *req) {
   cache_obj_t *obj_to_evict = params->q_tail;
   DEBUG_ASSERT(params->q_tail != NULL);
 
-  // // we can simply call remove_obj_from_list here, but for the best performance,
-  // // we chose to do it manually
-  // remove_obj_from_list(&params->q_head, &params->q_tail, obj);
-
   params->q_tail = params->q_tail->queue.prev;
   if (likely(params->q_tail != NULL)) {
     params->q_tail->queue.next = NULL;
   } else {
     /* cache->n_obj has not been updated */
-    DEBUG_ASSERT(cache->n_obj == 1);
+    // DEBUG_ASSERT(cache->n_obj == 1);
     params->q_head = NULL;
   }
 

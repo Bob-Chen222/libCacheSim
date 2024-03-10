@@ -27,6 +27,7 @@ typedef struct thread_params {
   cache_t* cache;
   reader_t* reader;
   int num_threads;
+  pthread_barrier_t barrier;
 } thread_params_t;
 
 void* thread_function(void* arg){
@@ -109,9 +110,8 @@ void* thread_function(void* arg){
     
     // start = (char*)(params->reader->mapped_file + mmap_offset);
     // add a barrier
-    // pthread_barrier_wait(&params->barrier);
+    // pthread_barrier_wait(&thread_params->barrier);
   }
-  printf("exit loop!!!!!\n");
   double after_time = gettime();
   double runtime = after_time - before_time;
   // only used for oracleGeneralBin
@@ -123,9 +123,6 @@ void* thread_function(void* arg){
 
 }
 
-void nothin(){
-  return;
-}
 
 void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
               int warmup_sec, char *ofilepath, uint64_t num_threads) {
@@ -141,6 +138,8 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
   // create num_threads threads
   printf("num_thread: %lu\n", num_threads);
   pthread_t threads[num_threads];
+  pthread_barrier_t myBarrier;
+  pthread_barrier_init(&myBarrier, NULL, num_threads);
   thread_params_t* thread_params = malloc(sizeof(thread_params_t) * num_threads);
   for (uint64_t i = 0; i < num_threads; i++) {
     thread_params[i].thread_id = i;
@@ -148,6 +147,7 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
     thread_params[i].cache = cache;
     thread_params[i].reader = reader;
     thread_params[i].num_threads = num_threads;
+    thread_params[i].barrier = myBarrier;
   }
 
   double start_time = gettime();

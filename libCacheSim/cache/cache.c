@@ -235,28 +235,29 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
           cache->cache_name, cache->n_req, req->obj_id, req->obj_size,
           cache->get_occupied_byte(cache), cache->cache_size);
 
-  cache_obj_t *obj = cache->find(cache, req, true);
-  bool hit = (obj != NULL);
+  // cache_obj_t *obj = cache->find(cache, req, true);
+  // bool hit = (obj != NULL);
 
-  if (hit) {
-    VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
-    if (cache->prefetcher && cache->prefetcher->prefetch) {
-    cache->prefetcher->prefetch(cache, req);
-    }
-    return hit;
-  }
+  // if (hit) {
+  //   VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
+  //   if (cache->prefetcher && cache->prefetcher->prefetch) {
+  //   cache->prefetcher->prefetch(cache, req);
+  //   }
+  //   return hit;
+  // }
 
 
   //if use this lock, then all the codes become atomic and we don't need to lock in
   //sub function
   
   pthread_spin_lock(&cache->lock);
-  if (cache->get_occupied_byte(cache) + req->obj_size >
-          cache->cache_size) {
-    cache->evict(cache, req);
-    // printf("after evict\n");
-  }
+
   cache->insert(cache, req);
+  // if (cache->get_occupied_byte(cache) + req->obj_size >
+  //         cache->cache_size) {
+  //   cache->evict(cache, req);
+  //   // printf("after evict\n");
+  // }
   pthread_spin_unlock(&cache->lock);
   // printf("before insert\n");
   // pthread_mutex_unlock(&cache->lock);
@@ -266,7 +267,7 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
   //   cache->prefetcher->prefetch(cache, req);
   // }
   
-  return hit;
+  return false;
 }
 
 /**
@@ -281,14 +282,17 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
  */
 cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   cache_obj_t *cache_obj = hashtable_insert(cache->hashtable, req);
+  if (cache_obj == NULL) {
+    return NULL;
+  }
   
   // use atomic operation
   // int64_t obj_size = (int64_t)atomic_load(&cache_obj->obj_size);
   // int64_t obj_md_size = (int64_t)atomic_load(&cache->obj_md_size);
-  // atomic_fetch_add(&cache->occupied_byte, obj_size + obj_md_size);
-  // atomic_fetch_add(&cache->n_obj, 1);
-  cache->occupied_byte += cache_obj->obj_size;
-  cache->n_obj += 1;
+  atomic_fetch_add(&cache->occupied_byte, 1);
+  atomic_fetch_add(&cache->n_obj, 1);
+  // cache->occupied_byte += cache_obj->obj_size;
+  // cache->n_obj += 1;
 
 #ifdef SUPPORT_TTL
   if (cache->default_ttl != 0 && req->ttl == 0) {
@@ -301,7 +305,8 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   cache_obj->create_time = CURR_TIME(cache, req);
 #endif
 
-DEBUG_ASSERT(
+  DEBUG_ASSERT(cache_obj != NULL);
+  DEBUG_ASSERT(req != NULL);
   cache_obj->misc.next_access_vtime = req->next_access_vtime;
   cache_obj->misc.freq = 0;
 
@@ -349,8 +354,10 @@ void cache_evict_base(cache_t *cache, cache_obj_t *obj,
 void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
                            bool remove_from_hashtable) {
   DEBUG_ASSERT(cache->occupied_byte >= obj->obj_size + cache->obj_md_size);
-  cache->occupied_byte -= 1;
-  cache->n_obj -= 1;
+  // cache->occupied_byte -= 1;
+  // cache->n_obj -= 1;
+  atomic_fetch_add(&cache->occupied_byte, -1);
+  atomic_fetch_add(&cache->n_obj, -1);
   if (remove_from_hashtable) {
     hashtable_delete(cache->hashtable, obj);
   }

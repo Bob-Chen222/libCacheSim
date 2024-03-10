@@ -43,7 +43,6 @@ void copy_request_to_cache_obj(cache_obj_t *cache_obj, const request_t *req) {
  */
 cache_obj_t *create_cache_obj_from_request(const request_t *req) {
   cache_obj_t *cache_obj = my_malloc(cache_obj_t);
-  pthread_mutex_init(&cache_obj->lock, NULL);
   memset(cache_obj, 0, sizeof(cache_obj_t));
   if (req != NULL) copy_request_to_cache_obj(cache_obj, req);
   return cache_obj;

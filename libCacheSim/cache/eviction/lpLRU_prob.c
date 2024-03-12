@@ -22,6 +22,7 @@ typedef struct lpLRU_prob_params_t {
   cache_obj_t *q_head;
   cache_obj_t *q_tail;
   float prob; // prob that the object is promoted
+  pthread_spinlock_t lock;
 } lpLRU_prob_params_t;
 
 static const char *DEFAULT_CACHE_PARAMS = "prob=0.5";

@@ -93,6 +93,11 @@ cache_t *lpFIFO_shards_init(const common_cache_params_t ccache_params,
     lpFIFO_shards_parse_params(cache, cache_specific_params);
   }
 
+  if (params->n_shards > ccache_params.cache_size) {
+    params->n_shards = ccache_params.cache_size;
+  }
+
+
   params->shards = (cache_t **)malloc(sizeof(cache_t *) * params->n_shards);
 
   common_cache_params_t ccache_params_local = ccache_params;
@@ -101,10 +106,13 @@ cache_t *lpFIFO_shards_init(const common_cache_params_t ccache_params,
     ccache_params_local.cache_size = 1;
   }
   // ccache_params_local.hashpower = MIN(16, ccache_params_local.hashpower - 4);
+  printf("cache size: %ld\n", ccache_params_local.cache_size);
   for (int i = 0; i < params->n_shards; i++) {
     params->shards[i] = FIFO_init(ccache_params_local, NULL);
   }
   params->req_local = new_request();
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "lpFIFO_shard-%d",
+             params->n_shards);
 
   return cache;
 }

@@ -34,6 +34,7 @@ extern "C" {
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <stdatomic.h>
 
 #include "../../include/libCacheSim/logging.h"
 #include "../../include/libCacheSim/macro.h"

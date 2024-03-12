@@ -8,6 +8,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <pthread.h>
 
 #include "../config.h"
 #include "mem.h"
@@ -87,6 +88,10 @@ typedef struct {
 } lpFIFO_shards_obj_metadata_t;
 
 typedef struct {
+  int freq;
+}delay_obj_metadata_t;
+
+typedef struct {
   int32_t freq;
   int32_t last_access_vtime;
 } FIFO_Reinsertion_obj_metadata_t;
@@ -144,6 +149,7 @@ typedef struct cache_obj {
   struct cache_obj *hash_next;
   obj_id_t obj_id;
   uint32_t obj_size;
+  pthread_mutex_t lock;
   struct {
     struct cache_obj *prev;
     struct cache_obj *next;
@@ -181,13 +187,14 @@ typedef struct cache_obj {
     Sieve_obj_params_t sieve;
     lpFIFO_batch_obj_metadata_t lpFIFO_batch;
     lpFIFO_shards_obj_metadata_t lpFIFO_shards;
+    delay_obj_metadata_t delay_count;
     
 
 #if defined(ENABLE_GLCACHE) && ENABLE_GLCACHE == 1
     GLCache_obj_metadata_t GLCache;
 #endif
   };
-} __attribute__((packed)) cache_obj_t;
+} cache_obj_t;
 
 struct request;
 /**
@@ -282,6 +289,8 @@ void append_obj_to_tail(cache_obj_t **head, cache_obj_t **tail,
  * @param cache_obj
  */
 static inline void free_cache_obj(cache_obj_t *cache_obj) {
+  // destroy the lock
+  pthread_mutex_destroy(&cache_obj->lock);
   my_free(sizeof(cache_obj_t), cache_obj);
 }
 

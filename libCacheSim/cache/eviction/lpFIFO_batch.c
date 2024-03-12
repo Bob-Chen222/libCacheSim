@@ -33,6 +33,7 @@ typedef struct {
 
   // fields added in addition to clock-
   uint64_t batch_size; // determines how often promotion is performed
+  float promotion_ratio; // determines how many objects are promoted
   cache_t *buffer;     // stores to-be-promoted objects, even if they are evicted from the main cache
 } lpFIFO_batch_params_t;
 
@@ -103,11 +104,17 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
   }
 
   common_cache_params_t ccache_params_local = ccache_params;
+  if (params->batch_size == 0) {
+    params->batch_size = 1;
+  }
   ccache_params_local.cache_size = params->batch_size;
+  if (ccache_params_local.cache_size == 0) {
+    ccache_params_local.cache_size = 1;
+  }
   params->buffer = FIFO_init(ccache_params_local, NULL);
 
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "lpFIFO_batch-%lu",
-             params->batch_size);
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "lpFIFO_batch-%f",
+             params->promotion_ratio);
 
   return cache;
 }
@@ -179,8 +186,12 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache && !buff->find(buff, req, false)) {
     while (!buff->can_insert(buff, req)) {
+      printf("should never call eviction\n");
       buff->evict(buff, NULL);
     }
+    assert((cache->get_occupied_byte(cache) + req->obj_size +
+              cache->obj_md_size >
+          cache->cache_size));
     buff->insert(buff, req);
 #ifdef USE_BELADY
     obj->next_access_vtime = req->next_access_vtime;
@@ -282,23 +293,11 @@ static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req) {
     //   printf("Transferred %d objects\n", count);
     // }
     copy_cache_obj_to_request(local_req, batched_obj);
-    while (!cache->can_insert(cache, local_req)) {
-      cache->evict(cache, NULL);
-    }
     buff->evict(buff, local_req);
-
-    // TODO: this step is what takes significant time
-    //       resulting in a O(n^2) construction
-    //       Consider reworking this part!! 
     // if still in cache, move to head of queue
     obj_to_promote = cache->find(cache, local_req, false);
     if (obj_to_promote != NULL) {
       move_obj_to_head(&params->q_head, &params->q_tail, obj_to_promote);
-    }
-    // if not in cache, reinsert
-    else {
-      assert(cache->find(cache, local_req, false) == NULL);
-      cache->insert(cache, local_req);
     }
 
     batched_obj = buff->to_evict(buff, NULL);
@@ -395,10 +394,8 @@ static void lpFIFO_batch_parse_params(cache_t *cache,
     } else if (strcasecmp(key, "batch-size") == 0) {
       if (strchr(value, '.') != NULL) {
         // input is a float
-        params->batch_size = (uint64_t)(cache->cache_size * strtof(value, &end));
-        if (params -> batch_size == 0) {
-          params->batch_size = 1;
-        }
+        params->batch_size = (uint64_t)(strtof(value, &end) * cache->cache_size);
+        params->promotion_ratio = strtof(value, &end);
       }
       else {
         params->batch_size = (uint64_t)strtol(value, &end, 0);

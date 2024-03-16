@@ -68,6 +68,11 @@ cache_t *FIFO_init(const common_cache_params_t ccache_params,
   params->q_head = NULL;
   params->q_tail = NULL;
 
+  // add a dummy object to the queue so that tail will not change
+  request_t *req = new_request();
+  cache_obj_t *dummy = create_cache_obj_from_request(req);
+  prepend_obj_to_head(&params->q_head, &params->q_tail, dummy);
+
   return cache;
 }
 
@@ -140,7 +145,12 @@ static cache_obj_t *FIFO_insert(cache_t *cache, const request_t *req) {
   cache_obj_t *obj = cache_insert_base(cache, req);
   if (obj != NULL){
     FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
-    prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+    if (!cache->warmup_complete){
+      prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+    }else{
+      // printf("num objects: %lu\n", cache->n_obj);
+      T_prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+    }
   }
 
   return NULL; 
@@ -174,18 +184,10 @@ static cache_obj_t *FIFO_to_evict(cache_t *cache, const request_t *req) {
 static void FIFO_evict(cache_t *cache, const request_t *req) {
   // printf("no fifo evict\n");
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
-  cache_obj_t *obj_to_evict = params->q_tail;
   DEBUG_ASSERT(params->q_tail != NULL);
 
-  params->q_tail = params->q_tail->queue.prev;
-  if (likely(params->q_tail != NULL)) {
-    params->q_tail->queue.next = NULL;
-  } else {
-    /* cache->n_obj has not been updated */
-    // DEBUG_ASSERT(cache->n_obj == 1);
-    params->q_head = NULL;
-  }
-
+  
+  cache_obj_t *obj_to_evict = T_evict_last_obj(&params->q_head, &params->q_tail);
   cache_evict_base(cache, obj_to_evict, true);
 }
 

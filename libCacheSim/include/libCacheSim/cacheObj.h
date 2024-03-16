@@ -13,6 +13,10 @@
 #include "../config.h"
 #include "mem.h"
 
+#ifndef __cplusplus
+#include <stdatomic.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -88,7 +92,7 @@ typedef struct {
 } lpFIFO_shards_obj_metadata_t;
 
 typedef struct {
-  int freq;
+  uint64_t last_vtime;
 }delay_obj_metadata_t;
 
 typedef struct {
@@ -274,6 +278,11 @@ void move_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
 void prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
                          cache_obj_t *cache_obj);
 
+cache_obj_t* T_evict_last_obj(cache_obj_t **head, cache_obj_t **tail);
+
+void T_prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
+                                  cache_obj_t *cache_obj);
+
 /**
  * append the object to the tail of the doubly linked list
  * the object should not be in the list, otherwise, use move_obj_to_tail
@@ -290,7 +299,6 @@ void append_obj_to_tail(cache_obj_t **head, cache_obj_t **tail,
  */
 static inline void free_cache_obj(cache_obj_t *cache_obj) {
   // destroy the lock
-  pthread_mutex_destroy(&cache_obj->lock);
   my_free(sizeof(cache_obj_t), cache_obj);
 }
 

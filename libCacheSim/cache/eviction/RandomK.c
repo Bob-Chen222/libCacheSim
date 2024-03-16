@@ -135,10 +135,7 @@ static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
   //no need for blocking
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
-    // WARNING: need large lock but I don't want to use cache lock
-    // pthread_mutex_lock(&obj->lock);
-    obj->RandomTwo.last_access_vtime = cache->n_req;
-    // pthread_mutex_unlock(&obj->lock);
+    atomic_store(&obj->RandomTwo.last_access_vtime, atomic_load(&cache->n_req));
   }
 
   return obj;
@@ -156,7 +153,7 @@ static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *RandomK_insert(cache_t *cache, const request_t *req) {
   cache_obj_t *obj = cache_insert_base(cache, req);
-  obj->RandomTwo.last_access_vtime = cache->n_req;
+  atomic_store(&obj->RandomTwo.last_access_vtime, atomic_load(&cache->n_req));
 
   return obj;
 }
@@ -177,15 +174,17 @@ static cache_obj_t *RandomK_to_evict(cache_t *cache, const request_t *req) {
 
 //this is only a sequential version for now
 static cache_obj_t *RandomK_select(cache_t *cache, const int k) {
-  cache_obj_t *obj_to_evict = hashtable_rand_obj(cache->hashtable);
+  cache_obj_t *target = hashtable_rand_obj(cache->hashtable);
 
   for (int i = 1; i < k; i++) {
     cache_obj_t *obj = hashtable_rand_obj(cache->hashtable);
-    if (obj->RandomTwo.last_access_vtime < obj_to_evict->RandomTwo.last_access_vtime) {
-      obj_to_evict = obj;
+    int64_t target_v = atomic_load(&obj->RandomTwo.last_access_vtime);
+    int64_t obj_v = atomic_load(&obj->RandomTwo.last_access_vtime);
+    if (obj_v < target_v){
+      target = obj;
     }
   }
-  return obj_to_evict;
+  return target;
 }
 
 /**

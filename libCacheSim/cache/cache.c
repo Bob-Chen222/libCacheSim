@@ -45,7 +45,7 @@ cache_t *cache_struct_init(const char *const cache_name,
   cache->can_insert = cache_can_insert_default;
   cache->get_occupied_byte = cache_get_occupied_byte_default;
   cache->get_n_obj = cache_get_n_obj_default;
-  pthread_spin_init(&cache->lock, 0);
+  cache->warmup_complete = false;
 
   /* this option works only when eviction age tracking
    * is on in config.h */
@@ -229,7 +229,8 @@ cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
  */
 bool cache_get_base(cache_t *cache, const request_t *req) {
   // use atomic add
-  // atomic_fetch_add(&cache->n_req, 1);
+  // needed for batched requests
+  // atomic_fetch_add(&cache->n_req, 1); //very unscalable
 
   VERBOSE("******* %s req %ld, obj %ld, obj_size %ld, cache size %ld/%ld\n",
           cache->cache_name, cache->n_req, req->obj_id, req->obj_size,
@@ -246,27 +247,19 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
     return hit;
   }
 
-
-  //if use this lock, then all the codes become atomic and we don't need to lock in
-  //sub function
-  
-  pthread_spin_lock(&cache->lock);
-
-  cache->insert(cache, req);
-  if (cache->get_occupied_byte(cache) + req->obj_size >
-          cache->cache_size) {
-    cache->evict(cache, req);
-    // printf("after evict\n");
+  if (!cache->can_insert(cache, req)) {
+    VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
+             req->obj_id);
+  } else {
+    while (cache->get_occupied_byte(cache) + req->obj_size +
+               cache->obj_md_size >
+           cache->cache_size) {
+      cache->evict(cache, req);
+    }
+    cache->insert(cache, req); //slightly scalable 
   }
-  pthread_spin_unlock(&cache->lock);
-  // printf("before insert\n");
-  // pthread_mutex_unlock(&cache->lock);
-  // printf("after insert\n");
 
-  // if (cache->prefetcher && cache->prefetcher->prefetch) {
-  //   cache->prefetcher->prefetch(cache, req);
-  // }
-  
+
   return false;
 }
 
@@ -285,30 +278,8 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   if (cache_obj == NULL) {
     return NULL;
   }
-  
-  // use atomic operation
-  // int64_t obj_size = (int64_t)atomic_load(&cache_obj->obj_size);
-  // int64_t obj_md_size = (int64_t)atomic_load(&cache->obj_md_size);
-  atomic_fetch_add(&cache->occupied_byte, 1);
+  atomic_fetch_add(&cache->occupied_byte, req->obj_size + cache->obj_md_size);
   atomic_fetch_add(&cache->n_obj, 1);
-  // cache->occupied_byte += cache_obj->obj_size;
-  // cache->n_obj += 1;
-
-#ifdef SUPPORT_TTL
-  if (cache->default_ttl != 0 && req->ttl == 0) {
-    cache_obj->exp_time = (int32_t)cache->default_ttl + req->clock_time;
-  }
-#endif
-
-#if defined(TRACK_EVICTION_V_AGE) || defined(TRACK_DEMOTION) || \
-    defined(TRACK_CREATE_TIME)
-  cache_obj->create_time = CURR_TIME(cache, req);
-#endif
-
-  DEBUG_ASSERT(cache_obj != NULL);
-  DEBUG_ASSERT(req != NULL);
-  cache_obj->misc.next_access_vtime = req->next_access_vtime;
-  cache_obj->misc.freq = 0;
 
   return cache_obj;
 }
@@ -323,22 +294,6 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
  */
 void cache_evict_base(cache_t *cache, cache_obj_t *obj,
                       bool remove_from_hashtable) {
-#if defined(TRACK_EVICTION_V_AGE)
-  if (cache->track_eviction_age) {
-    record_eviction_age(cache, obj, CURR_TIME(cache, req) - obj->create_time);
-  }
-#endif
-  if (cache->prefetcher && cache->prefetcher->handle_evict) {
-    request_t *check_req = new_request();
-    check_req->obj_id = obj->obj_id;
-    check_req->obj_size = obj->obj_size;
-    // check_req->ttl = 0; // re-add objects should be?
-    cache_remove_obj_base(cache, obj, remove_from_hashtable);
-    cache->prefetcher->handle_evict(cache, check_req);
-    my_free(sizeof(request_t), check_req);
-    return;
-  }
-
   cache_remove_obj_base(cache, obj, remove_from_hashtable);
 }
 
@@ -353,13 +308,10 @@ void cache_evict_base(cache_t *cache, cache_obj_t *obj,
  */
 void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
                            bool remove_from_hashtable) {
-  DEBUG_ASSERT(cache->occupied_byte >= obj->obj_size + cache->obj_md_size);
-  // cache->occupied_byte -= 1;
-  // cache->n_obj -= 1;
-  atomic_fetch_add(&cache->occupied_byte, -1);
-  atomic_fetch_add(&cache->n_obj, -1);
+  atomic_fetch_sub(&cache->occupied_byte, obj->obj_size + cache->obj_md_size);
+  atomic_fetch_sub(&cache->n_obj, 1);
   if (remove_from_hashtable) {
-    hashtable_delete(cache->hashtable, obj);
+    hashtable_try_delete(cache->hashtable, obj);
   }
 }
 

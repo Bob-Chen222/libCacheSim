@@ -63,6 +63,8 @@ cache_t *LRU_init(const common_cache_params_t ccache_params,
   cache->get_n_obj = cache_get_n_obj_default;
   cache->print_cache = LRU_print_cache;
 
+  pthread_spin_init(&cache->lock, PTHREAD_PROCESS_PRIVATE);
+
   if (ccache_params.consider_obj_metadata) {
     cache->obj_md_size = 8 * 2;
   } else {
@@ -129,7 +131,6 @@ static bool LRU_get(cache_t *cache, const request_t *req) {
  */
 static cache_obj_t *LRU_find(cache_t *cache, const request_t *req,
                              const bool update_cache) {
-  LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
   cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
 
   // pthread_mutex_lock(&cache->lock);
@@ -138,7 +139,10 @@ static cache_obj_t *LRU_find(cache_t *cache, const request_t *req,
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)
 #endif
+      pthread_spin_lock(&cache->lock);
+      LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
+      pthread_spin_unlock(&cache->lock);
   }
   // pthread_mutex_unlock(&cache->lock);
   return cache_obj;
@@ -155,10 +159,14 @@ static cache_obj_t *LRU_find(cache_t *cache, const request_t *req,
  * @return the inserted object
  */
 static cache_obj_t *LRU_insert(cache_t *cache, const request_t *req) {
-  LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
 
   cache_obj_t *obj = cache_insert_base(cache, req);
-  prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+  if (obj != NULL){
+    pthread_spin_lock(&cache->lock);
+    LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
+    prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+    pthread_spin_unlock(&cache->lock);
+  }
 
   return obj;
 }
@@ -190,16 +198,16 @@ static cache_obj_t *LRU_to_evict(cache_t *cache, const request_t *req) {
  * @param req not used
  */
 static void LRU_evict(cache_t *cache, const request_t *req) {
-  printf("enter LRU evict\n");
   LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
 
-  cache_obj_t *obj_to_evict = params->q_tail;
-  DEBUG_ASSERT(params->q_tail != NULL);
 
   // we can simply call remove_obj_from_list here, but for the best performance,
   // we chose to do it manually
   // remove_obj_from_list(&params->q_head, &params->q_tail, obj)
 
+  pthread_spin_lock(&cache->lock);
+  cache_obj_t *obj_to_evict = params->q_tail;
+  DEBUG_ASSERT(params->q_tail != NULL);
   params->q_tail = params->q_tail->queue.prev;
   if (likely(params->q_tail != NULL)) {
     params->q_tail->queue.next = NULL;
@@ -208,6 +216,7 @@ static void LRU_evict(cache_t *cache, const request_t *req) {
     DEBUG_ASSERT(cache->n_obj == 1);
     params->q_head = NULL;
   }
+  pthread_spin_unlock(&cache->lock);
 
 #if defined(TRACK_DEMOTION)
   if (cache->track_demotion)

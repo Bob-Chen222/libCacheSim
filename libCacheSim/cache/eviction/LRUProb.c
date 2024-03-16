@@ -156,11 +156,11 @@ static cache_obj_t* LRU_Prob_find(cache_t *cache, const request_t *req,
     cached_obj->misc.next_access_vtime = req->next_access_vtime;
 
 
-    pthread_mutex_lock(&params->lock);
     if (next_rand() % params->threshold == 0) {
+      pthread_spin_lock(&cache->lock);
       move_obj_to_head(&params->q_head, &params->q_tail, cached_obj);
+      pthread_spin_unlock(&cache->lock);
     }
-    pthread_mutex_unlock(&params->lock);
   }
 
   return cached_obj;

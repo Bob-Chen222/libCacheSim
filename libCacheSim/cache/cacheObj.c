@@ -204,6 +204,18 @@ void prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
   *head = cache_obj;
 }
 
+void T_prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
+                         cache_obj_t *cache_obj) {
+  assert(head != NULL);
+  cache_obj_t* old_head;
+  do{
+    old_head = *head;
+    cache_obj->queue.prev = NULL;
+    cache_obj->queue.next = old_head;
+  } while(!__sync_bool_compare_and_swap(head, old_head, cache_obj));
+  old_head->queue.prev = cache_obj;
+}
+
 /**
  * append the object to the tail of the doubly linked list
  * the object is not in the list, otherwise, use move_obj_to_tail
@@ -230,4 +242,17 @@ void append_obj_to_tail(cache_obj_t **head, cache_obj_t **tail,
 
 
   *tail = cache_obj;
+}
+
+cache_obj_t* T_evict_last_obj(cache_obj_t **head, cache_obj_t **tail) {
+  cache_obj_t *old_tail;
+  cache_obj_t *new_tail;
+  do{
+    old_tail = (*tail);
+    DEBUG_ASSERT(old_tail != NULL);
+    // this 
+    // DEBUG_ASSERT(old_tail->queue.prev != NULL);
+    new_tail = old_tail->queue.prev;
+  }while(!__sync_bool_compare_and_swap(tail, old_tail, new_tail));
+  return old_tail;
 }

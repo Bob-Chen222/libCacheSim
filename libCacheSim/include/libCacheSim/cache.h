@@ -21,6 +21,8 @@
 
 #ifdef __cplusplus
 extern "C" {
+#else
+#include <stdatomic.h>
 #endif
 
 struct cache;
@@ -125,6 +127,7 @@ struct cache {
   // do not use this variable directly
   int64_t occupied_byte;
   pthread_spinlock_t lock;
+  bool warmup_complete;
   /************ end of private fields *************/
 
   // because some algorithms choose different candidates

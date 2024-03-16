@@ -22,9 +22,12 @@ int main(int argc, char **argv) {
   }
 
 
+  printf("thread in main: %d\n", args.n_thread);
+
+
   if (args.n_cache_size * args.n_eviction_algo == 1 && args.n_thread >= 1) {
     parallel_simulate(args.reader, args.caches[0], args.report_interval,
-                      args.warmup_sec, args.ofilepath, args.n_thread);
+                      args.ofilepath, args.n_thread);
     free_arg(&args);
     printf("free!\n");
     return 0;

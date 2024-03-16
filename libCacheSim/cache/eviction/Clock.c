@@ -148,11 +148,10 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req,
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
-    pthread_mutex_lock(&obj->lock);
-    if (obj->clock.freq < params->max_freq) {
-      obj->clock.freq += 1;
+    int32_t freq = atomic_load(&obj->clock.freq);
+    if (freq < params->max_freq) {
+      atomic_fetch_add(&obj->clock.freq, 1);
     }
-    pthread_mutex_unlock(&obj->lock);
 #ifdef USE_BELADY
     obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -178,7 +177,7 @@ static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
 
   // pthread_mutex_lock(&params->lock);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-  obj->clock.freq = 0;
+  atomic_store(&obj->clock.freq, 0);
   // pthread_mutex_unlock(&params->lock);
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
@@ -229,17 +228,18 @@ static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
 static void Clock_evict(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
 
-  // pthread_mutex_lock(&params->lock);
+  pthread_spin_lock(&cache->lock);
   cache_obj_t *obj_to_evict = params->q_tail;
   while (obj_to_evict->clock.freq >= 1) {
     obj_to_evict->clock.freq -= 1;
+    DEBUG_ASSERT(obj_to_evict->clock.freq >= 0);
     params->n_obj_rewritten += 1;
     params->n_byte_rewritten += obj_to_evict->obj_size;
     move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
     obj_to_evict = params->q_tail;
   }
-  remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
-  // pthread_mutex_unlock(&params->lock);
+  pthread_spin_unlock(&cache->lock);
+  T_evict_last_obj(&params->q_head, &params->q_tail);
 
   cache_evict_base(cache, obj_to_evict, true);
 }

@@ -21,10 +21,6 @@ int main(int argc, char **argv) {
     ERROR("no cache size found\n");
   }
 
-
-  printf("thread in main: %d\n", args.n_thread);
-
-
   if (args.n_cache_size * args.n_eviction_algo == 1 && args.n_thread >= 1) {
     parallel_simulate(args.reader, args.caches[0], args.report_interval,
                       args.ofilepath, args.n_thread);

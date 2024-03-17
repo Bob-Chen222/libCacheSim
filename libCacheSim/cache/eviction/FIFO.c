@@ -33,6 +33,8 @@ static cache_obj_t *FIFO_to_evict(cache_t *cache, const request_t *req);
 static void FIFO_evict(cache_t *cache, const request_t *req);
 static bool FIFO_remove(cache_t *cache, const obj_id_t obj_id);
 static void print_FIFO(cache_t *cache);
+static bool doubly_linked_list_test(cache_t *cache);
+static bool surjection_test(cache_t *cache);
 
 // ***********************************************************************
 // ****                                                               ****
@@ -62,6 +64,7 @@ cache_t *FIFO_init(const common_cache_params_t ccache_params,
   cache->get_n_obj = cache_get_n_obj_default;
   cache->can_insert = cache_can_insert_default;
   cache->obj_md_size = 0;
+  cache->warmup_complete = false;
 
   cache->eviction_params = malloc(sizeof(FIFO_params_t));
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
@@ -69,9 +72,6 @@ cache_t *FIFO_init(const common_cache_params_t ccache_params,
   params->q_tail = NULL;
 
   // add a dummy object to the queue so that tail will not change
-  request_t *req = new_request();
-  cache_obj_t *dummy = create_cache_obj_from_request(req);
-  prepend_obj_to_head(&params->q_head, &params->q_tail, dummy);
 
   return cache;
 }
@@ -147,9 +147,14 @@ static cache_obj_t *FIFO_insert(cache_t *cache, const request_t *req) {
     FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
     if (!cache->warmup_complete){
       prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+      // DEBUG_ASSERT(doubly_linked_list_test(cache));
     }else{
       // printf("num objects: %lu\n", cache->n_obj);
+      // pthread_spin_lock(&cache->lock);
       T_prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+      // DEBUG_ASSERT(surjection_test(cache));
+      // pthread_spin_unlock(&cache->lock);
+
     }
   }
 
@@ -182,12 +187,12 @@ static cache_obj_t *FIFO_to_evict(cache_t *cache, const request_t *req) {
  * @param evicted_obj if not NULL, return the evicted object to caller
  */
 static void FIFO_evict(cache_t *cache, const request_t *req) {
-  // printf("no fifo evict\n");
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   DEBUG_ASSERT(params->q_tail != NULL);
-
-  
   cache_obj_t *obj_to_evict = T_evict_last_obj(&params->q_head, &params->q_tail);
+  DEBUG_ASSERT(obj_to_evict != NULL);
+
+  // TODO: change to true
   cache_evict_base(cache, obj_to_evict, true);
 }
 
@@ -227,10 +232,55 @@ static void print_FIFO(cache_t *cache) {
   while (obj != NULL) {
     printf("===%lu ", obj->obj_id);
     obj = obj->queue.next;
+    DEBUG_ASSERT(obj != params->q_head);
   }
+
   printf("\n");
 }
 
+static bool surjection_test(cache_t *cache){
+  // traverse the linked list and make sure that all the items are in the hashtable as well
+  FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
+  cache_obj_t *p = params->q_head;
+  while(p != NULL){
+    if (hashtable_find_obj_id(cache->hashtable, p->obj_id) == NULL){
+      printf("obj_id %lu not in hashtable\n", p->obj_id);
+      return false;
+    }
+    p = p->queue.next;
+  }
+  return true;
+}
+
+static bool doubly_linked_list_test(cache_t *cache){
+  FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
+  cache_obj_t *head = params->q_head;
+  cache_obj_t *tail = params->q_tail;
+
+  cache_obj_t *p = head;
+  while(p -> queue.next != NULL){
+    if (p->queue.next != NULL){
+      if (p->queue.next->queue.prev != p){
+        printf("next->prev not equal to p\n");
+        return false;
+      }
+    }
+    p = p->queue.next;
+  }
+
+  if (p != tail){
+    printf("p != tail\n");
+    return false;
+  }
+
+  if (p->queue.next != NULL){
+    printf("p->next != NULL\n");
+    return false;
+  }
+
+  return true;
+
+}
 #ifdef __cplusplus
 }
 #endif

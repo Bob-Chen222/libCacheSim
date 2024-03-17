@@ -39,6 +39,8 @@ void* thread_function(void* arg){
   uint64_t miss_cnt = 0;
   for (uint64_t i = 0; i < req_cnt / num_threads; i++) {
     request_t* req = thread_params->req_list[i];
+    // printf("obj_id: %ld\n", req->obj_id);
+    
     // printf("%ld\n", req->obj_id);
     if (!thread_params->cache->get(thread_params->cache, req)) {
       miss_cnt++;
@@ -62,7 +64,7 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
   printf("num_thread: %lu\n", num_threads);
   int req_cnt = 10000000;
   int obj_num = 100000;
-  int warmup_cnt = 10;
+  int warmup_cnt = 100;
   double alpha = 1;
 
   printf("generating file\n");
@@ -77,7 +79,7 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
     uint32_t obj_size = 1;
     int64_t next_access_vtime = -1;
     req->clock_time = real_time;
-    req->obj_id = obj_id;
+    req->obj_id = obj_id + 1;
     req->obj_size = obj_size;
     req->next_access_vtime = next_access_vtime;
     if (!cache->find(cache, req, true)) {
@@ -116,7 +118,9 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
       uint32_t obj_size = 1;
       int64_t next_access_vtime = -1;
       req_list[j]->clock_time = real_time;
-      req_list[j]->obj_id = obj_id;
+      req_list[j]->obj_id = obj_id + 1;
+      req_list[j]->obj_id += i * 10000007UL;
+      DEBUG_ASSERT(req_list[j]->obj_id != 0);
       req_list[j]->obj_size = obj_size;
       req_list[j]->next_access_vtime = next_access_vtime;
     }
@@ -131,6 +135,7 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
   for (uint64_t i = 0; i < num_threads; i++) {
     pthread_join(threads[i], NULL);
   }
+
 
   double runtime = gettime() - start_time;
   printf("runtime total: %.8lf\n", runtime);

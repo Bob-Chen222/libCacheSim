@@ -177,34 +177,8 @@ bool cache_can_insert_default(cache_t *cache, const request_t *req) {
  */
 cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
                              const bool update_cache) {
+  DEBUG_ASSERT(req->obj_id != 0);
   cache_obj_t *cache_obj = hashtable_find(cache->hashtable, req);
-
-  // "update_cache = true" means that it is a real user request, use handle_find
-  // to update prefetcher's state
-  //we will not use this
-  // if (cache->prefetcher && cache->prefetcher->handle_find && update_cache) {
-  //   bool hit = (cache_obj != NULL);
-  //   cache->prefetcher->handle_find(cache, req, hit);
-  // }
-
-  if (cache_obj != NULL) {
-#ifdef SUPPORT_TTL
-    if (cache_obj->exp_time != 0 && cache_obj->exp_time < req->clock_time) {
-      if (update_cache) {
-        cache->remove(cache, cache_obj->obj_id);
-      }
-
-      cache_obj = NULL;
-    }
-#endif
-    // if (update_cache) {
-    //   pthread_mutex_lock(&cache_obj->lock);
-    //   cache_obj->misc.next_access_vtime = req->next_access_vtime;
-    //   cache_obj->misc.freq += 1;
-    //   pthread_mutex_unlock(&cache_obj->lock);
-    // }
-  }
-
   return cache_obj;
 }
 
@@ -236,6 +210,8 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
           cache->cache_name, cache->n_req, req->obj_id, req->obj_size,
           cache->get_occupied_byte(cache), cache->cache_size);
 
+
+  
   cache_obj_t *obj = cache->find(cache, req, true);
   bool hit = (obj != NULL);
 
@@ -256,6 +232,7 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
            cache->cache_size) {
       cache->evict(cache, req);
     }
+    DEBUG_ASSERT(req->obj_id != 0);
     cache->insert(cache, req); //slightly scalable 
   }
 
@@ -274,6 +251,7 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
  * @return the inserted object
  */
 cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
+  DEBUG_ASSERT(req->obj_id != 0);
   cache_obj_t *cache_obj = hashtable_insert(cache->hashtable, req);
   if (cache_obj == NULL) {
     return NULL;
@@ -311,7 +289,7 @@ void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
   atomic_fetch_sub(&cache->occupied_byte, obj->obj_size + cache->obj_md_size);
   atomic_fetch_sub(&cache->n_obj, 1);
   if (remove_from_hashtable) {
-    hashtable_try_delete(cache->hashtable, obj);
+   hashtable_delete(cache->hashtable, obj);
   }
 }
 

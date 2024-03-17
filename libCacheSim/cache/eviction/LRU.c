@@ -141,6 +141,7 @@ static cache_obj_t *LRU_find(cache_t *cache, const request_t *req,
 #endif
       pthread_spin_lock(&cache->lock);
       LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
+      // print_list(params->q_head, params->q_tail);
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
       pthread_spin_unlock(&cache->lock);
   }
@@ -217,6 +218,7 @@ static void LRU_evict(cache_t *cache, const request_t *req) {
     params->q_head = NULL;
   }
   pthread_spin_unlock(&cache->lock);
+  cache_evict_base(cache, obj_to_evict, true);
 
 #if defined(TRACK_DEMOTION)
   if (cache->track_demotion)
@@ -225,7 +227,6 @@ static void LRU_evict(cache_t *cache, const request_t *req) {
 #endif
 
 
-  cache_evict_base(cache, obj_to_evict, true);
 }
 
 /**

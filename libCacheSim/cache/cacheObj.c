@@ -250,9 +250,22 @@ cache_obj_t* T_evict_last_obj(cache_obj_t **head, cache_obj_t **tail) {
   do{
     old_tail = (*tail);
     DEBUG_ASSERT(old_tail != NULL);
-    // this 
-    // DEBUG_ASSERT(old_tail->queue.prev != NULL);
     new_tail = old_tail->queue.prev;
   }while(!__sync_bool_compare_and_swap(tail, old_tail, new_tail));
+  if (new_tail != NULL) {
+    new_tail->queue.next = NULL;
+  } else {
+    ERROR("evicting the last object in the list\n");
+    *head = NULL;
+  }
   return old_tail;
+}
+
+void print_list(cache_obj_t *head, cache_obj_t *tail) {
+  cache_obj_t *p = head;
+  printf("head: %ld, tail: %ld\n", head->obj_id, tail->obj_id);
+  while (p != NULL) {
+    printf("%ld->", p->obj_id);
+    p = p->queue.next;
+  }
 }

@@ -12,6 +12,7 @@
 #include "../../dataStructure/hashtable/hashtable.h"
 #include "../../include/libCacheSim/evictionAlgo.h"
 #include "../../include/libCacheSim/macro.h"
+#include <stdatomic.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,6 +20,7 @@ extern "C" {
 
 typedef struct RandomK_params {
     int k;
+    atomic_int_least64_t vtime;
 } RandomK_params_t;
 
 static const char *DEFAULT_PARAMS = "k=1";
@@ -71,6 +73,7 @@ cache_t *RandomK_init(const common_cache_params_t ccache_params,
   cache->eviction_params = (RandomK_params_t *) malloc(sizeof(RandomK_params_t));
   RandomK_params_t *params = (RandomK_params_t *) cache->eviction_params;
   params->k = 2;
+  params->vtime = ATOMIC_VAR_INIT(0);
   if (cache_specific_params != NULL) {
     RandomK_parse_params(cache, cache_specific_params);
   }
@@ -110,6 +113,7 @@ static void RandomK_free(cache_t *cache) {
  * @return true if cache hit, false if cache miss
  */
 static bool RandomK_get(cache_t *cache, const request_t *req) {
+  // add one to the number of requests
   return cache_get_base(cache, req);
 }
 
@@ -134,8 +138,10 @@ static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
 
   //no need for blocking
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
+  RandomK_params_t *params = (RandomK_params_t *)cache->eviction_params;
+  atomic_fetch_add(&params->vtime, 1);
   if (obj != NULL && update_cache) {
-    atomic_store(&obj->RandomTwo.last_access_vtime, atomic_load(&cache->n_req));
+    atomic_store(&obj->RandomTwo.last_access_vtime, atomic_load(&params->vtime));
   }
 
   return obj;
@@ -153,8 +159,10 @@ static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *RandomK_insert(cache_t *cache, const request_t *req) {
   cache_obj_t *obj = cache_insert_base(cache, req);
-  atomic_store(&obj->RandomTwo.last_access_vtime, atomic_load(&cache->n_req));
-
+  if (obj != NULL) {
+    RandomK_params_t *params = (RandomK_params_t *)cache->eviction_params;
+    atomic_store(&obj->RandomTwo.last_access_vtime, atomic_load(&params->vtime));
+  }
   return obj;
 }
 
@@ -173,8 +181,9 @@ static cache_obj_t *RandomK_to_evict(cache_t *cache, const request_t *req) {
 }
 
 //this is only a sequential version for now
-static cache_obj_t *RandomK_select(cache_t *cache, const int k) {
+static inline cache_obj_t *RandomK_select(cache_t *cache, const int k) {
   cache_obj_t *target = hashtable_rand_obj(cache->hashtable);
+  DEBUG_ASSERT(target != NULL);
 
   for (int i = 1; i < k; i++) {
     cache_obj_t *obj = hashtable_rand_obj(cache->hashtable);
@@ -197,6 +206,7 @@ static cache_obj_t *RandomK_select(cache_t *cache, const int k) {
  */
 static void RandomK_evict(cache_t *cache, const request_t *req) {
   cache_obj_t *obj_to_evict = RandomK_to_evict(cache, req);
+  DEBUG_ASSERT(obj_to_evict != NULL);
   DEBUG_ASSERT(obj_to_evict->obj_size != 0);
   cache_evict_base(cache, obj_to_evict, true);
 }

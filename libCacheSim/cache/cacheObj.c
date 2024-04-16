@@ -206,14 +206,15 @@ void prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
 
 void T_prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
                          cache_obj_t *cache_obj) {
-  // assert(head != NULL);
+  assert(head != NULL);
   cache_obj_t* old_head;
   do{
     old_head = *head;
     cache_obj->queue.prev = NULL;
     cache_obj->queue.next = old_head;
-  } while(!__sync_bool_compare_and_swap(head, old_head, cache_obj));
+  } while(!__atomic_compare_exchange_n(head, &old_head, cache_obj, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
   old_head->queue.prev = cache_obj;
+  // __atomic_store_n(old_head, cache_obj, __ATOMIC_RELAXED);
 }
 
 /**
@@ -249,15 +250,18 @@ cache_obj_t* T_evict_last_obj(cache_obj_t **head, cache_obj_t **tail) {
   cache_obj_t *new_tail;
   do{
     old_tail = (*tail);
-    DEBUG_ASSERT(old_tail != NULL);
+    // __atomic_store_n(&old_tail, *tail, __ATOMIC_RELAXED);
+    // DEBUG_ASSERT(old_tail != NULL);
     new_tail = old_tail->queue.prev;
-  }while(!__sync_bool_compare_and_swap(tail, old_tail, new_tail));
+    __atomic_store_n(&new_tail, old_tail->queue.prev, __ATOMIC_RELAXED);
+  }while(!__atomic_compare_exchange_n(tail, &old_tail, new_tail, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
   if (new_tail != NULL) {
     new_tail->queue.next = NULL;
   } else {
     ERROR("evicting the last object in the list\n");
     *head = NULL;
   }
+  // unlock
   return old_tail;
 }
 
@@ -269,5 +273,3 @@ void print_list(cache_obj_t *head, cache_obj_t *tail) {
     p = p->queue.next;
   }
 }
-
-

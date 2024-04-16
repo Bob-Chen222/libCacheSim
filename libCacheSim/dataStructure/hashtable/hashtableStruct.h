@@ -29,8 +29,6 @@ typedef struct hashtable {
   uint64_t n_obj;
   uint16_t hashpower;
   // having an array of spinlock is better than having a single spinlock
-  // pthread_mutex_t *locks;
-  pthread_rwlock_t rwlock;
   pthread_mutex_t *locks;
   bool external_obj; /* whether the object should be allocated by hash table,
                         this should be true most of the time */

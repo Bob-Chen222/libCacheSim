@@ -212,9 +212,9 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
 
 
   
-  bool hit = false;
+
   cache_obj_t *obj = cache->find(cache, req, true);
-  hit = (obj != NULL);
+  bool hit = (obj != NULL);
 
   if (hit) {
     VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
@@ -228,17 +228,17 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
     VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
              req->obj_id);
   } else {
-    while (cache->get_occupied_byte(cache) + req->obj_size +
+    if (cache->get_occupied_byte(cache) + req->obj_size +
                cache->obj_md_size >
            cache->cache_size) {
       cache->evict(cache, req);
     }
-    cache->insert(cache, req); //slightly scalable 
     DEBUG_ASSERT(req->obj_id != 0);
+    cache->insert(cache, req); //slightly scalable 
   }
 
 
-  return hit;
+  return false;
 }
 
 /**
@@ -257,8 +257,10 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   if (cache_obj == NULL) {
     return NULL;
   }
-  atomic_fetch_add(&cache->occupied_byte, req->obj_size + cache->obj_md_size);
-  atomic_fetch_add(&cache->n_obj, 1);
+  // atomic_fetch_add(&cache->occupied_byte, req->obj_size + cache->obj_md_size);
+  cache->occupied_byte += req->obj_size + cache->obj_md_size;
+  // atomic_fetch_add(&cache->n_obj, 1);
+  cache->n_obj++;
 
   return cache_obj;
 }
@@ -287,8 +289,10 @@ void cache_evict_base(cache_t *cache, cache_obj_t *obj,
  */
 void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
                            bool remove_from_hashtable) {
-  atomic_fetch_sub(&cache->occupied_byte, obj->obj_size + cache->obj_md_size);
-  atomic_fetch_sub(&cache->n_obj, 1);
+  // atomic_fetch_sub(&cache->occupied_byte, obj->obj_size + cache->obj_md_size);
+  // atomic_fetch_sub(&cache->n_obj, 1);
+  cache->occupied_byte -= obj->obj_size + cache->obj_md_size;
+  cache->n_obj--;
   if (remove_from_hashtable) {
    hashtable_delete(cache->hashtable, obj);
   }

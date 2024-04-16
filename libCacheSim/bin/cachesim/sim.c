@@ -21,7 +21,7 @@ typedef struct thread_params {
   uint64_t req_cnt;
   uint64_t miss_cnt;
   uint64_t* oracle;
-  uint64_t* req_list;
+  request_t** req_list;
 } thread_params_t;
 
 void* thread_function(void* arg){
@@ -37,15 +37,18 @@ void* thread_function(void* arg){
 
   // read the file
   uint64_t miss_cnt = 0;
-  request_t* req = new_request();
   for (uint64_t i = 0; i < req_cnt / num_threads; i++) {
-    req->obj_id = thread_params->req_list[i];
+    request_t* req = thread_params->req_list[i];
+    // printf("obj_id: %ld\n", req->obj_id);
+    
+    // printf("%ld\n", req->obj_id);
     if (!thread_params->cache->get(thread_params->cache, req)) {
       miss_cnt++;
     }
     // move to the next request
   }
   // only used for oracleGeneralBin
+  // printf("miss count: %ld\n", miss_cnt);
   atomic_fetch_add(&thread_params->miss_cnt, miss_cnt);
   return NULL;
 
@@ -59,9 +62,9 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
   set_rand_seed(rand());
 
   // printf("num_thread: %lu\n", num_threads);
-  uint64_t req_cnt = 10000000;
+  int req_cnt = 500000000;
   int obj_num = 5000000;
-  int warmup_cnt = 500000;
+  int warmup_cnt = 100;
   double alpha = 1;
 
   // printf("generating file\n");
@@ -107,12 +110,19 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
     thread_params[i].req_cnt = req_cnt;
     thread_params[i].oracle = oracles;
     // preload the file
-    uint64_t* req_list = malloc(sizeof(uint64_t) * req_cnt / num_threads);
+    request_t** req_list = malloc(sizeof(request_t*) * req_cnt / num_threads);
     for (uint64_t j = 0; j < req_cnt / num_threads; j++) {
-      // req_list[j] = new_request();
-      // uint32_t real_time = 0;
+      req_list[j] = new_request();
+      uint32_t real_time = 0;
       uint64_t obj_id = oracles[j * num_threads + i];
-      req_list[j] = obj_id + 1;
+      uint32_t obj_size = 1;
+      int64_t next_access_vtime = -1;
+      req_list[j]->clock_time = real_time;
+      req_list[j]->obj_id = obj_id + 1;
+      // req_list[j]->obj_id += i * 10000007UL;
+      DEBUG_ASSERT(req_list[j]->obj_id != 0);
+      req_list[j]->obj_size = obj_size;
+      req_list[j]->next_access_vtime = next_access_vtime;
     }
     thread_params[i].req_list = req_list;
   }
@@ -128,7 +138,7 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
 
 
   double runtime = gettime() - start_time;
-  printf("runtime total: %.8lf\n", runtime);
+  // printf("runtime total: %.8lf\n", runtime);
 
   char output_str[1024];
   char size_str[8];

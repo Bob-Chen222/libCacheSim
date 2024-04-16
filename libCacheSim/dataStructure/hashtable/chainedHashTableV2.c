@@ -43,7 +43,7 @@ extern "C" {
 static void _chained_hashtable_expand_v2(hashtable_t *hashtable);
 static void print_hashbucket_item_distribution(const hashtable_t *hashtable);
 static uint64_t test_and_set(uint64_t *dummy);
-static inline void test_and_test_and_set(uint64_t* dummy);
+static void test_and_test_and_set(uint64_t* dummy);
 // static double gettime(void);
 
 /************************ helper func ************************/
@@ -410,9 +410,6 @@ cache_obj_t *chained_hashtable_rand_obj_v2(const hashtable_t *hashtable) {
   uint64_t *dummy = &(hashtable->ptr_table[pos]->obj_id);
   uint64_t old = UINT64_MAX;
   uint64_t new = UINT64_MAX - 1;
-  while (__atomic_compare_exchange(dummy, &old, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED) == 0) {
-    old = UINT64_MAX;
-  }
   cache_obj_t *cache_obj = hashtable->ptr_table[pos]->hash_next;
   if (cache_obj == NULL){
     hashtable->ptr_table[pos]->obj_id = UINT64_MAX;
@@ -542,13 +539,13 @@ static uint64_t test_and_set(uint64_t *dummy) {
     // Atomic compare and exchange
     // If *lock_ptr == expected, then *lock_ptr is set to 1 and returns true (lock acquired)
     // If not, it does nothing and returns false
-    return atomic_compare_exchange_strong(dummy, &expected, UINT64_MAX - 1);
+    return __atomic_compare_exchange(dummy, &expected, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
 }
 
-static inline void test_and_test_and_set(unsigned long* dummy) {
+static void test_and_test_and_set(unsigned long* dummy) {
     while (!test_and_set(dummy)) {
         // Busy wait if the lock is taken
-        while (atomic_load(dummy) == UINT64_MAX - 1) {
+        while (__atomic_load_n(dummy, __ATOMIC_RELAXED) == UINT64_MAX - 1) {
             // Lock is busy, just wait
         }
     }

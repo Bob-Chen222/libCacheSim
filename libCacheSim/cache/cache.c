@@ -209,10 +209,6 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
   VERBOSE("******* %s req %ld, obj %ld, obj_size %ld, cache size %ld/%ld\n",
           cache->cache_name, cache->n_req, req->obj_id, req->obj_size,
           cache->get_occupied_byte(cache), cache->cache_size);
-
-
-  
-
   cache_obj_t *obj = cache->find(cache, req, true);
   bool hit = (obj != NULL);
 
@@ -257,9 +253,7 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   if (cache_obj == NULL) {
     return NULL;
   }
-  // atomic_fetch_add(&cache->occupied_byte, req->obj_size + cache->obj_md_size);
   cache->occupied_byte += req->obj_size + cache->obj_md_size;
-  // atomic_fetch_add(&cache->n_obj, 1);
   cache->n_obj++;
 
   return cache_obj;
@@ -289,8 +283,6 @@ void cache_evict_base(cache_t *cache, cache_obj_t *obj,
  */
 void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
                            bool remove_from_hashtable) {
-  // atomic_fetch_sub(&cache->occupied_byte, obj->obj_size + cache->obj_md_size);
-  // atomic_fetch_sub(&cache->n_obj, 1);
   cache->occupied_byte -= obj->obj_size + cache->obj_md_size;
   cache->n_obj--;
   if (remove_from_hashtable) {

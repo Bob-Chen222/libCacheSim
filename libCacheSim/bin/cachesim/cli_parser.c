@@ -239,7 +239,6 @@ static void init_arg(struct arguments *args) {
 }
 
 void free_arg(struct arguments *args) {
-  printf("called free args\n");
   if (args->eviction_params) {
     free(args->eviction_params);
   }
@@ -542,7 +541,7 @@ void print_parsed_args(struct arguments *args) {
 
   snprintf(output_str + n, OUTPUT_STR_LEN - n - 1, "\n");
 
-  INFO("%s", output_str);
+  // INFO("%s", output_str);
 
 #undef OUTPUT_STR_LEN
 }

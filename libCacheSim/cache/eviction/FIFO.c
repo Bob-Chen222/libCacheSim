@@ -35,6 +35,9 @@ static bool FIFO_remove(cache_t *cache, const obj_id_t obj_id);
 static void print_FIFO(cache_t *cache);
 static bool doubly_linked_list_test(cache_t *cache);
 static bool surjection_test(cache_t *cache);
+static uint64_t test_and_set(uint64_t *dummy);
+static void test_and_test_and_set(unsigned long* dummy);
+static cache_obj_t* TT_evict_last_obj(cache_t *cache);
 
 // ***********************************************************************
 // ****                                                               ****
@@ -70,6 +73,7 @@ cache_t *FIFO_init(const common_cache_params_t ccache_params,
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   params->q_head = NULL;
   params->q_tail = NULL;
+  params->val_lock = UINT64_MAX;
 
   // add a dummy object to the queue so that tail will not change
 
@@ -189,10 +193,10 @@ static cache_obj_t *FIFO_to_evict(cache_t *cache, const request_t *req) {
 static void FIFO_evict(cache_t *cache, const request_t *req) {
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   DEBUG_ASSERT(params->q_tail != NULL);
-  cache_obj_t *obj_to_evict = T_evict_last_obj(&params->q_head, &params->q_tail);
-  DEBUG_ASSERT(obj_to_evict != NULL);
+  cache_obj_t *obj_to_evict = TT_evict_last_obj(cache);
+  // DEBUG_ASSERT(obj_to_evict != NULL);
 
-  // TODO: change to true
+  // // TODO: change to true
   cache_evict_base(cache, obj_to_evict, true);
 }
 
@@ -281,6 +285,47 @@ static bool doubly_linked_list_test(cache_t *cache){
   return true;
 
 }
+
+static uint64_t test_and_set(uint64_t *dummy) {
+    uint64_t expected = UINT64_MAX;
+    // Atomic compare and exchange
+    // If *lock_ptr == expected, then *lock_ptr is set to 1 and returns true (lock acquired)
+    // If not, it does nothing and returns false
+    return __atomic_compare_exchange_n(dummy, &expected, UINT64_MAX - 1, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+}
+
+static void test_and_test_and_set(unsigned long* dummy) {
+    while (true) {
+        // Busy wait if the lock is taken
+        while (__atomic_load_n(dummy, __ATOMIC_RELAXED) == UINT64_MAX - 1){
+            // Lock is busy, just wait
+        }
+        if (test_and_set(dummy)) {
+            // Lock is acquired
+            break;
+        }
+    }
+}
+
+static cache_obj_t* TT_evict_last_obj(cache_t *cache) {
+  FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
+  // use test and test and set to lock the tail
+  test_and_test_and_set(&params->val_lock);
+  cache_obj_t *obj_to_evict = params->q_tail;
+  // DEBUG_ASSERT(params->q_tail != NULL);
+  params->q_tail = params->q_tail->queue.prev;
+  if (likely(params->q_tail != NULL)) {
+    params->q_tail->queue.next = NULL;
+  } else {
+    /* cache->n_obj has not been updated */
+    DEBUG_ASSERT(cache->n_obj == 1);
+    params->q_head = NULL;
+  }
+  // unlock the tail
+  params->val_lock = UINT64_MAX;
+  return obj_to_evict;
+}
+
 #ifdef __cplusplus
 }
 #endif

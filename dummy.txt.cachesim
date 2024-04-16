@@ -1,0 +1,24 @@
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 20.18 MQPS, thread_num 1
+
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 37.61 MQPS, thread_num 2
+
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 72.44 MQPS, thread_num 4
+
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 138.59 MQPS, thread_num 8
+
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 221.24 MQPS, thread_num 16
+
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 238.32 MQPS, thread_num 32
+
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 1.0000, throughput 442.22 MQPS, thread_num 1
+
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 1.0000, throughput 925.59 MQPS, thread_num 2
+
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 1.0000, throughput 1809.93 MQPS, thread_num 4
+
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 1.0000, throughput 3640.64 MQPS, thread_num 8
+
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 1.0000, throughput 7094.93 MQPS, thread_num 16
+
+../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 1.0000, throughput 13114.62 MQPS, thread_num 32
+

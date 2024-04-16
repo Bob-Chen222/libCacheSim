@@ -21,8 +21,6 @@ typedef struct LRU_Prob_params {
   cache_obj_t *q_head;
   cache_obj_t *q_tail;
 
-  pthread_mutex_t lock;
-
   double prob;
   int threshold;
 } LRU_Prob_params_t;
@@ -74,6 +72,9 @@ cache_t *LRU_Prob_init(const common_cache_params_t ccache_params,
     cache->obj_md_size = 0;
   }
 
+  // pthread_mutex_init(&cache->lock, NULL);
+  pthread_spin_init(&cache->lock, PTHREAD_PROCESS_PRIVATE);
+
   cache->eviction_params =
       (LRU_Prob_params_t *)malloc(sizeof(LRU_Prob_params_t));
   LRU_Prob_params_t *params = (LRU_Prob_params_t *)(cache->eviction_params);
@@ -84,11 +85,6 @@ cache_t *LRU_Prob_init(const common_cache_params_t ccache_params,
   }
 
   params->threshold = (int)1.0 / params->prob;
-  int res = pthread_mutex_init(&params->lock, NULL);
-  if (res != 0) {
-    ERROR("mutex init failed\n");
-    exit(1);
-  }
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "LRU_Prob_%lf",
            params->prob);
 
@@ -146,24 +142,22 @@ static bool LRU_Prob_get(cache_t *cache, const request_t *req) {
  */
 static cache_obj_t* LRU_Prob_find(cache_t *cache, const request_t *req,
                                  const bool update_cache) {
+
+  bool promote = false;
+  cache_obj_t *obj = NULL;
   LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
-
-  cache_obj_t *cached_obj = cache_find_base(cache, req, update_cache);
-  if (cached_obj != NULL && likely(update_cache)) {
-    // use atomic add for freq
-    cached_obj->misc.freq += 1;
-    // TODO: check the correctness of this code
-    cached_obj->misc.next_access_vtime = req->next_access_vtime;
-
-
-    if (next_rand() % params->threshold == 0) {
-      pthread_spin_lock(&cache->lock);
-      move_obj_to_head(&params->q_head, &params->q_tail, cached_obj);
-      pthread_spin_unlock(&cache->lock);
+  promote = (next_rand() % params->threshold == 0);
+  if (!promote){
+    return cache_find_base(cache, req, update_cache);
+  }else{
+    pthread_spin_lock(&cache->lock);
+    obj = cache_find_base(cache, req, update_cache);
+    if (obj != NULL && likely(update_cache)) {
+      move_obj_to_head(&params->q_head, &params->q_tail, obj);
     }
+    pthread_spin_unlock(&cache->lock);
+    return obj;
   }
-
-  return cached_obj;
 }
 
 /**
@@ -178,11 +172,15 @@ static cache_obj_t* LRU_Prob_find(cache_t *cache, const request_t *req,
  * @return the inserted object
  */
 static cache_obj_t *LRU_Prob_insert(cache_t *cache, const request_t *req) {
-  LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
+  pthread_spin_lock(&cache->lock);
   cache_obj_t *obj = cache_insert_base(cache, req);
-  pthread_mutex_lock(&params->lock);
+  if (obj == NULL) {
+    pthread_spin_unlock(&cache->lock);
+    return NULL;
+  }
+  LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-  pthread_mutex_unlock(&params->lock);
+  pthread_spin_unlock(&cache->lock);
 
   return obj;
 }
@@ -213,13 +211,13 @@ static cache_obj_t *LRU_Prob_to_evict(cache_t *cache, const request_t *req) {
  * @param evicted_obj if not NULL, return the evicted object to caller
  */
 static void LRU_Prob_evict(cache_t *cache, const request_t *req) {
-  LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
 
-  pthread_mutex_lock(&params->lock);
+  pthread_spin_lock(&cache->lock);
+  LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
   cache_obj_t *obj_to_evict = params->q_tail;
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
-  pthread_mutex_unlock(&params->lock);
   cache_remove_obj_base(cache, obj_to_evict, true);
+  pthread_spin_unlock(&cache->lock);
 }
 
 static void LRU_Prob_remove_obj(cache_t *cache, cache_obj_t *obj_to_remove) {

@@ -9,6 +9,7 @@ extern "C" {
 typedef struct {
   cache_obj_t *q_head;
   cache_obj_t *q_tail;
+  uint64_t val_lock; //used for spin
 } FIFO_params_t;
 
 /* used by LRU related */

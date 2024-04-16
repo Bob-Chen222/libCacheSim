@@ -1,0 +1,12 @@
+[33m[WARN]  04-05-2024 08:56:06 reader.c:238  (tid=140099138389888): trace file size 97 - 0 is not multiple of item size 24, mod 1
+[0m../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 20.18 MQPS, thread_num 1
+[33m[WARN]  04-05-2024 09:12:01 reader.c:238  (tid=140628773631872): trace file size 97 - 0 is not multiple of item size 24, mod 1
+[0m../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 37.61 MQPS, thread_num 2
+[33m[WARN]  04-05-2024 09:26:04 reader.c:238  (tid=140551049521024): trace file size 97 - 0 is not multiple of item size 24, mod 1
+[0m../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 72.44 MQPS, thread_num 4
+[33m[WARN]  04-05-2024 09:39:07 reader.c:238  (tid=140336923219840): trace file size 97 - 0 is not multiple of item size 24, mod 1
+[0m../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 138.59 MQPS, thread_num 8
+[33m[WARN]  04-05-2024 09:51:49 reader.c:238  (tid=140397861046144): trace file size 97 - 0 is not multiple of item size 24, mod 1
+[0m../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 221.24 MQPS, thread_num 16
+[33m[WARN]  04-05-2024 10:04:33 reader.c:238  (tid=139741849331584): trace file size 97 - 0 is not multiple of item size 24, mod 1
+[0m../dummy.txt FIFO cache size   977KiB,       5000000000 req, miss ratio 0.0002, throughput 238.32 MQPS, thread_num 32

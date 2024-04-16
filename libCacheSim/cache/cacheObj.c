@@ -206,7 +206,7 @@ void prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
 
 void T_prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
                          cache_obj_t *cache_obj) {
-  assert(head != NULL);
+  // assert(head != NULL);
   cache_obj_t* old_head;
   do{
     old_head = *head;
@@ -269,3 +269,5 @@ void print_list(cache_obj_t *head, cache_obj_t *tail) {
     p = p->queue.next;
   }
 }
+
+

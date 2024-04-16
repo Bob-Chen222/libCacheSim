@@ -42,7 +42,8 @@ extern "C" {
 
 static void _chained_hashtable_expand_v2(hashtable_t *hashtable);
 static void print_hashbucket_item_distribution(const hashtable_t *hashtable);
-static bool compare_and_set(unsigned long* ptr, unsigned long oldval, unsigned long newval);
+static uint64_t test_and_set(uint64_t *dummy);
+static inline void test_and_test_and_set(uint64_t* dummy);
 // static double gettime(void);
 
 /************************ helper func ************************/
@@ -59,7 +60,7 @@ static inline cache_obj_t *_last_obj_in_bucket(const hashtable_t *hashtable,
 }
 
 /* add an object to the hashtable */
-static inline cache_obj_t*  add_to_bucket(hashtable_t *hashtable,
+static inline cache_obj_t* add_to_bucket(hashtable_t *hashtable,
                                  const request_t *req) {
   // printf("add_to_bucket\n");
   cache_obj_t *cache_obj = create_cache_obj_from_request(req);
@@ -67,23 +68,26 @@ static inline cache_obj_t*  add_to_bucket(hashtable_t *hashtable,
                 hashmask(hashtable->hashpower);
 
   uint64_t *dummy = &(hashtable->ptr_table[hv]->obj_id);
-  uint64_t old = UINT64_MAX;
-  uint64_t new = UINT64_MAX - 1;
 
-  while (__atomic_compare_exchange(dummy, &old, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED) == 0) {
-  }
-
-  // printf("obj_id: %lu, hv: %lu\n", (unsigned long)cache_obj->obj_id, hv);
-  if (chained_hashtable_find_obj_id_v2(hashtable, cache_obj->obj_id)) {
-    hashtable->ptr_table[hv] -> obj_id = UINT64_MAX;
-    return NULL;
+  test_and_test_and_set(dummy);
+  // pthread_rwlock_wrlock(&hashtable->rwlock);
+  // find whether the object is in the hash table
+  for (cache_obj_t *cur_obj = hashtable->ptr_table[hv] -> hash_next; cur_obj != NULL; cur_obj = cur_obj->hash_next) {
+    if (cur_obj->obj_id == cache_obj->obj_id) {
+      hashtable->ptr_table[hv] -> obj_id = UINT64_MAX;
+      // pthread_mutex_unlock(&hashtable->locks[hv]);
+      // pthread_rwlock_unlock(&hashtable->rwlock);
+      return NULL;
+    }
   }
 
   // at this point the mask is 1
   // printf("exit_bucket\n");
   if (hashtable->ptr_table[hv] -> hash_next == NULL) {
     hashtable->ptr_table[hv] -> hash_next = cache_obj;
-    hashtable->ptr_table[hv] -> obj_id = old;
+    hashtable->ptr_table[hv] -> obj_id = UINT64_MAX;
+    // pthread_mutex_unlock(&hashtable->locks[hv]);
+    // pthread_rwlock_unlock(&hashtable->rwlock);
     return cache_obj;
   }
   cache_obj_t *head_ptr = hashtable->ptr_table[hv] -> hash_next;
@@ -91,8 +95,9 @@ static inline cache_obj_t*  add_to_bucket(hashtable_t *hashtable,
   cache_obj->hash_next = head_ptr;
   hashtable->ptr_table[hv]->hash_next = cache_obj;
   // this only is correct when we can safely switch at any point when completing the final step
-  hashtable->ptr_table[hv] -> obj_id = old;
-
+  hashtable->ptr_table[hv] -> obj_id = UINT64_MAX;
+  // pthread_mutex_unlock(&hashtable->locks[hv]);
+  // pthread_rwlock_unlock(&hashtable->rwlock);
   return cache_obj;
 
 
@@ -132,13 +137,16 @@ hashtable_t *create_chained_hashtable_v2(const uint16_t hashpower) {
   hashtable->external_obj = false;
   hashtable->hashpower = hashpower;
   hashtable->n_obj = 0;
+  // pthread_rwlock_init(&hashtable->rwlock, NULL);
   // for every entry, add a dummy object
+  hashtable->locks = malloc(sizeof(pthread_mutex_t) * hashsize(hashtable->hashpower));
   for (uint64_t i = 0; i < hashsize(hashtable->hashpower); i++) {
     request_t* req = new_request();
     req->obj_id = UINT64_MAX;
     cache_obj_t* cache_obj = create_cache_obj_from_request(req);
     hashtable->ptr_table[i] = cache_obj;
     free_request(req);
+    pthread_mutex_init(&hashtable->locks[i], NULL);
   }
   return hashtable;
 }
@@ -148,6 +156,7 @@ cache_obj_t *chained_hashtable_find_obj_id_v2(const hashtable_t *hashtable,
 
   // printf("hashfind\n");
   // add readlock
+  // pthread_rwlock_rdlock(&hashtable->rwlock);
   // we will use the same lock
   DEBUG_ASSERT(obj_id != UINT64_MAX);
   DEBUG_ASSERT(obj_id != 0);
@@ -156,29 +165,37 @@ cache_obj_t *chained_hashtable_find_obj_id_v2(const hashtable_t *hashtable,
   hv = hv & hashmask(hashtable->hashpower);
 
   uint64_t *dummy = &(hashtable->ptr_table[hv]->obj_id);
-  uint64_t old = UINT64_MAX;
-  uint64_t new = UINT64_MAX - 1;
+  // uint64_t old = UINT64_MAX;
+  // uint64_t new = UINT64_MAX - 1;
 
-  while (__atomic_compare_exchange(dummy, &old, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED) == 0) {
-  }
+
+  // while (__atomic_compare_exchange(dummy, &old, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED) == 0) {
+  //   old = UINT64_MAX;
+  // }
+  // test_and_test_and_set(dummy);
 
   cache_obj = hashtable->ptr_table[hv] -> hash_next;
 
   while (cache_obj) {
     if (cache_obj->obj_id == obj_id) {
-      hashtable->ptr_table[hv]->obj_id = old;
+      hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
+      // pthread_rwlock_unlock(&hashtable->rwlock);
       return cache_obj;
     }
     cache_obj = cache_obj->hash_next;
   }
-  hashtable->ptr_table[hv]->obj_id = old;
+  hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
+  // pthread_rwlock_unlock(&hashtable->rwlock);
   return cache_obj;
 }
 
 cache_obj_t *chained_hashtable_find_v2(const hashtable_t *hashtable,
                                        const request_t *req) {
   // printf("called find\n");
-  return chained_hashtable_find_obj_id_v2(hashtable, req->obj_id);
+  // pthread_spin_lock(&hashtable->lock);
+  cache_obj_t* obj = chained_hashtable_find_obj_id_v2(hashtable, req->obj_id);
+  // pthread_spin_unlock(&hashtable->lock);
+  return obj;
 }
 
 cache_obj_t *chained_hashtable_find_obj_v2(const hashtable_t *hashtable,
@@ -191,10 +208,12 @@ cache_obj_t *chained_hashtable_find_obj_v2(const hashtable_t *hashtable,
 cache_obj_t *chained_hashtable_insert_v2(hashtable_t *hashtable,
                                          const request_t *req) {
   // printf("hash insert\n");
+  // pthread_spin_lock(&hashtable->lock);
   cache_obj_t *new_cache_obj = add_to_bucket(hashtable, req);
   if (new_cache_obj) {
     DEBUG_ASSERT(new_cache_obj->obj_id != 0);
   }
+  // pthread_spin_unlock(&hashtable->lock);
   return new_cache_obj;
 }
 
@@ -218,22 +237,24 @@ cache_obj_t *chained_hashtable_insert_v2(hashtable_t *hashtable,
 void chained_hashtable_delete_v2(hashtable_t *hashtable,
                                  cache_obj_t *cache_obj) {
 
-  // printf("hash delete\n");
+  // printf("no delete!\n");
+  DEBUG_ASSERT(cache_obj != NULL);
+  // printf("hash delete\n");]
   // use atomic sub instead
   // first check whether the whole hashtable is in the process of expanding
   //at this moment the expand completes
   uint64_t hv = get_hash_value_int_64(&cache_obj->obj_id) &
                 hashmask(hashtable->hashpower);
+  pthread_mutex_lock(&hashtable->locks[hv]);
   uint64_t *dummy = &(hashtable->ptr_table[hv]->obj_id);
-  uint64_t old = UINT64_MAX;
-  uint64_t new = UINT64_MAX - 1;
-  while (__atomic_compare_exchange(dummy, &old, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED) == 0) {
-  }
-  // printf("after delete hang\n");
+  // test_and_test_and_set(dummy);
+  // pthread_rwlock_wrlock(&hashtable->rwlock);
   if ((hashtable->ptr_table[hv] -> hash_next) == cache_obj) {
     hashtable->ptr_table[hv]->hash_next = cache_obj->hash_next;
     if (!hashtable->external_obj) free_cache_obj(cache_obj);
     hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
+    pthread_mutex_unlock(&hashtable->locks[hv]);
+    // pthread_rwlock_unlock(&hashtable->rwlock);
     return;
   }
 
@@ -257,12 +278,19 @@ void chained_hashtable_delete_v2(hashtable_t *hashtable,
 
   // the object to remove is not in the hash table
   DEBUG_ASSERT(cur_obj != NULL);
+  if (cur_obj == NULL) {
+    printf("cur_obj is null\n");
+    printf("obj_id %lu\n", (unsigned long)cache_obj->obj_id);
+  }
   cur_obj->hash_next = cache_obj->hash_next;
   // release the lock manually
-  hashtable->ptr_table[hv]->obj_id = old;
   if (!hashtable->external_obj) {
     free_cache_obj(cache_obj);
   }
+
+  hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
+  pthread_mutex_unlock(&hashtable->locks[hv]);
+  // pthread_rwlock_unlock(&hashtable->rwlock);
 }
 
 bool chained_hashtable_try_delete_v2(hashtable_t *hashtable,
@@ -277,12 +305,13 @@ bool chained_hashtable_try_delete_v2(hashtable_t *hashtable,
   uint64_t old = UINT64_MAX;
   uint64_t new = UINT64_MAX - 1;
   while (__atomic_compare_exchange(dummy, &old, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED) == 0) {
+    old = UINT64_MAX;
   }
 
   if (hashtable->ptr_table[hv] -> hash_next == cache_obj) {
     hashtable->ptr_table[hv] -> hash_next = cache_obj->hash_next;
     if (!hashtable->external_obj) free_cache_obj(cache_obj);
-    hashtable->ptr_table[hv]->obj_id = old;
+    hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
     return true;
   }
 
@@ -315,11 +344,11 @@ bool chained_hashtable_try_delete_v2(hashtable_t *hashtable,
   if (cur_obj != NULL) {
     cur_obj->hash_next = cache_obj->hash_next;
     if (!hashtable->external_obj) free_cache_obj(cache_obj);
-    hashtable->ptr_table[hv]->obj_id = old;
+    hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
     return true;
   }
 
-  hashtable->ptr_table[hv]->obj_id = old;
+  hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
   return false;
 }
 
@@ -382,13 +411,14 @@ cache_obj_t *chained_hashtable_rand_obj_v2(const hashtable_t *hashtable) {
   uint64_t old = UINT64_MAX;
   uint64_t new = UINT64_MAX - 1;
   while (__atomic_compare_exchange(dummy, &old, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED) == 0) {
+    old = UINT64_MAX;
   }
   cache_obj_t *cache_obj = hashtable->ptr_table[pos]->hash_next;
   if (cache_obj == NULL){
-    hashtable->ptr_table[pos]->obj_id = old;
+    hashtable->ptr_table[pos]->obj_id = UINT64_MAX;
     return chained_hashtable_rand_obj_v2(hashtable);
   }else{
-    hashtable->ptr_table[pos]->obj_id = old;
+    hashtable->ptr_table[pos]->obj_id = UINT64_MAX;
     return cache_obj;
   }
 }
@@ -506,12 +536,24 @@ static void print_hashbucket_item_distribution(const hashtable_t *hashtable) {
   printf("\n #################### %d \n", n_obj);
 }
 
-// static bool compare_and_set(unsigned long* ptr, unsigned long oldval, unsigned long newval) {
-//     // Atomically compares the contents of *ptr with oldval
-//     // If equal, it writes newval into *ptr
-//     // The function returns true if the comparison is successful and newval was written.
-//     return __atomic_compare_exchange((atomic_ulong*)ptr, &oldval, newval, );
-// }
+static uint64_t test_and_set(uint64_t *dummy) {
+    uint64_t expected = UINT64_MAX;
+    uint64_t new = UINT64_MAX - 1;
+    // Atomic compare and exchange
+    // If *lock_ptr == expected, then *lock_ptr is set to 1 and returns true (lock acquired)
+    // If not, it does nothing and returns false
+    return atomic_compare_exchange_strong(dummy, &expected, UINT64_MAX - 1);
+}
+
+static inline void test_and_test_and_set(unsigned long* dummy) {
+    while (!test_and_set(dummy)) {
+        // Busy wait if the lock is taken
+        while (atomic_load(dummy) == UINT64_MAX - 1) {
+            // Lock is busy, just wait
+        }
+    }
+}
+
 
 // static double gettime(void) {
 //   struct timeval tv;

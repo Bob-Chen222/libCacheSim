@@ -79,7 +79,6 @@ cache_t *Clock_init(const common_cache_params_t ccache_params,
   params->q_tail = NULL;
   params->n_bit_counter = 1;
   params->max_freq = 1;
-  pthread_mutex_init(&params->lock, NULL);
 
   Clock_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
@@ -90,6 +89,8 @@ cache_t *Clock_init(const common_cache_params_t ccache_params,
     snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Clock-%d",
              params->n_bit_counter);
   }
+
+  pthread_spin_init(&cache->lock, 0);
 
   return cache;
 }
@@ -171,14 +172,19 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req,
  * @return the inserted object
  */
 static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
-  Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-
   cache_obj_t *obj = cache_insert_base(cache, req);
-
-  // pthread_mutex_lock(&params->lock);
-  prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-  atomic_store(&obj->clock.freq, 0);
-  // pthread_mutex_unlock(&params->lock);
+  if (obj != NULL){
+    FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
+    if (!cache->warmup_complete){
+      prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+    }else{
+      pthread_spin_lock(&cache->lock);
+      DEBUG_ASSERT(obj -> obj_id != 0);
+      T_prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+      pthread_spin_unlock(&cache->lock);
+      atomic_store(&obj->clock.freq, 0);
+    }
+  }
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -226,21 +232,23 @@ static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
  * @param evicted_obj if not NULL, return the evicted object to caller
  */
 static void Clock_evict(cache_t *cache, const request_t *req) {
+
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-
-  pthread_spin_lock(&cache->lock);
   cache_obj_t *obj_to_evict = params->q_tail;
-  while (obj_to_evict->clock.freq >= 1) {
-    obj_to_evict->clock.freq -= 1;
-    DEBUG_ASSERT(obj_to_evict->clock.freq >= 0);
-    params->n_obj_rewritten += 1;
-    params->n_byte_rewritten += obj_to_evict->obj_size;
-    move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
+  cache_obj_t *obj_to_evict_next = obj_to_evict->queue.prev;
+  while (__atomic_load_n(&obj_to_evict->clock.freq, __ATOMIC_RELAXED) >= 1) {
+    atomic_fetch_sub(&obj_to_evict->clock.freq, 1);
+    // obj_to_evict->clock.freq -= 1;
+    T_prepend_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
+    params->q_tail = obj_to_evict_next;
     obj_to_evict = params->q_tail;
+    obj_to_evict_next = obj_to_evict->queue.prev;
+    DEBUG_ASSERT(obj_to_evict != NULL);
+    DEBUG_ASSERT(obj_to_evict_next != NULL);
   }
+  pthread_spin_lock(&cache->lock);
+  obj_to_evict = T_evict_last_obj(&params->q_head, &params->q_tail);
   pthread_spin_unlock(&cache->lock);
-  T_evict_last_obj(&params->q_head, &params->q_tail);
-
   cache_evict_base(cache, obj_to_evict, true);
 }
 

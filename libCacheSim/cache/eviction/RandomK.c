@@ -69,6 +69,7 @@ cache_t *RandomK_init(const common_cache_params_t ccache_params,
   cache->to_evict = RandomK_to_evict;
   cache->evict = RandomK_evict;
   cache->remove = RandomK_remove;
+  pthread_spin_init(&cache->lock, 0);
 
   cache->eviction_params = (RandomK_params_t *) malloc(sizeof(RandomK_params_t));
   RandomK_params_t *params = (RandomK_params_t *) cache->eviction_params;
@@ -205,10 +206,12 @@ static inline cache_obj_t *RandomK_select(cache_t *cache, const int k) {
  * @param req not used
  */
 static void RandomK_evict(cache_t *cache, const request_t *req) {
+  pthread_spin_lock(&cache->lock);
   cache_obj_t *obj_to_evict = RandomK_to_evict(cache, req);
   DEBUG_ASSERT(obj_to_evict != NULL);
   DEBUG_ASSERT(obj_to_evict->obj_size != 0);
   cache_evict_base(cache, obj_to_evict, true);
+  pthread_spin_unlock(&cache->lock);
 }
 
 /**

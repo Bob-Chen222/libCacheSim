@@ -21,7 +21,7 @@ typedef struct {
   uint64_t vtime;
 } LRU_delay_params_t;
 
-static const char *DEFAULT_PARAMS = "delay-time=1";
+static const char *DEFAULT_PARAMS = "delay-time=0.2";
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -68,6 +68,7 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
   cache->remove = LRU_delay_remove;
   cache->to_evict = LRU_delay_to_evict;
   cache->get_occupied_byte = cache_get_occupied_byte_default;
+  pthread_spin_init(&cache->lock, 0);
 
   if (ccache_params.consider_obj_metadata) {
     cache->obj_md_size = 8 * 2;
@@ -148,11 +149,11 @@ static bool LRU_delay_get(cache_t *cache, const request_t *req) {
  */
 static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
                              const bool update_cache) {
-  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
-  cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
 
   // no matter what, we need to check the buffer and see i
 
+  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+  cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
   atomic_fetch_add(&params->vtime, 1);
   if (cache_obj && likely(update_cache) && params->vtime - cache_obj->delay_count.last_vtime > params->delay_time) {
     /* lru_head is the newest, move cur obj to lru_head */
@@ -161,10 +162,13 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
 #endif
     //  check whether the last access time is greater than the delay time
       pthread_spin_lock(&cache->lock);
-      move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
-      // update the last access time
-      cache_obj->delay_count.last_vtime = params->vtime;
+      cache_obj = cache_find_base(cache, req, update_cache);
+      if (cache_obj && params->vtime - cache_obj->delay_count.last_vtime > params->delay_time) {
+        move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
+        cache_obj->delay_count.last_vtime = params->vtime;
+      }
       pthread_spin_unlock(&cache->lock);
+      // update the last access time
   }
 
   return cache_obj;
@@ -182,9 +186,13 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
  * @return the inserted object
  */
 static cache_obj_t *LRU_delay_insert(cache_t *cache, const request_t *req) {
-  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
-  cache_obj_t *obj = cache_insert_base(cache, req);
   pthread_spin_lock(&cache->lock);
+  cache_obj_t *obj = cache_insert_base(cache, req);
+  if (obj == NULL) {
+    pthread_spin_unlock(&cache->lock);
+    return NULL;
+  }
+  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
   obj->delay_count.last_vtime = params->vtime;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
   pthread_spin_unlock(&cache->lock);
@@ -220,13 +228,13 @@ static cache_obj_t *LRU_delay_to_evict(cache_t *cache, const request_t *req) {
  * @param req not used
  */
 static void LRU_delay_evict(cache_t *cache, const request_t *req) {
-  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
   pthread_spin_lock(&cache->lock);
+  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
   cache_obj_t *obj_to_evict = params->q_tail;
   obj_to_evict->delay_count.last_vtime = 0;
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
-  pthread_spin_unlock(&cache->lock);
   cache_remove_obj_base(cache, obj_to_evict, true);
+  pthread_spin_unlock(&cache->lock);
 }
 
 /**

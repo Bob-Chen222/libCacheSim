@@ -212,8 +212,9 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
 
 
   
+  bool hit = false;
   cache_obj_t *obj = cache->find(cache, req, true);
-  bool hit = (obj != NULL);
+  hit = (obj != NULL);
 
   if (hit) {
     VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
@@ -232,12 +233,12 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
            cache->cache_size) {
       cache->evict(cache, req);
     }
-    DEBUG_ASSERT(req->obj_id != 0);
     cache->insert(cache, req); //slightly scalable 
+    DEBUG_ASSERT(req->obj_id != 0);
   }
 
 
-  return false;
+  return hit;
 }
 
 /**

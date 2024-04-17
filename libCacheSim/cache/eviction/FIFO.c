@@ -71,8 +71,6 @@ cache_t *FIFO_init(const common_cache_params_t ccache_params,
   params->q_head = NULL;
   params->q_tail = NULL;
 
-  // add a dummy object to the queue so that tail will not change
-
   return cache;
 }
 

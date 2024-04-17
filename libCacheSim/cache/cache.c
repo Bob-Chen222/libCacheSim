@@ -46,6 +46,7 @@ cache_t *cache_struct_init(const char *const cache_name,
   cache->get_occupied_byte = cache_get_occupied_byte_default;
   cache->get_n_obj = cache_get_n_obj_default;
   cache->warmup_complete = false;
+  cache->val_lock = UINT64_MAX;
 
   /* this option works only when eviction age tracking
    * is on in config.h */
@@ -59,7 +60,6 @@ cache_t *cache_struct_init(const char *const cache_name,
   int hash_power = HASH_POWER_DEFAULT;
   if (params.hashpower > 0 && params.hashpower < 40)
     hash_power = params.hashpower;
-  // printf("hash power: %d\n", hash_power);
   cache->hashtable = create_hashtable(hash_power);
   hashtable_add_ptr_to_monitoring(cache->hashtable, &cache->q_head);
   hashtable_add_ptr_to_monitoring(cache->hashtable, &cache->q_tail);
@@ -253,8 +253,8 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   if (cache_obj == NULL) {
     return NULL;
   }
-  cache->occupied_byte += req->obj_size + cache->obj_md_size;
-  cache->n_obj++;
+  __atomic_fetch_add(&cache->n_obj, 1, __ATOMIC_RELAXED);
+  __atomic_fetch_add(&cache->occupied_byte, req->obj_size + cache->obj_md_size, __ATOMIC_RELAXED);
 
   return cache_obj;
 }
@@ -283,8 +283,8 @@ void cache_evict_base(cache_t *cache, cache_obj_t *obj,
  */
 void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
                            bool remove_from_hashtable) {
-  cache->occupied_byte -= obj->obj_size + cache->obj_md_size;
-  cache->n_obj--;
+  __atomic_fetch_sub(&cache->n_obj, 1, __ATOMIC_RELAXED);
+  __atomic_fetch_sub(&cache->occupied_byte, obj->obj_size + cache->obj_md_size, __ATOMIC_RELAXED);
   if (remove_from_hashtable) {
    hashtable_delete(cache->hashtable, obj);
   }
@@ -443,4 +443,23 @@ bool dump_cached_obj_age(cache_t *cache, const request_t *req,
 
   fclose(ofile);
   return true;
+}
+
+static uint64_t test_and_set(uint64_t *dummy) {
+    uint64_t expected = UINT64_MAX;
+    uint64_t new = UINT64_MAX - 1;
+    return __atomic_compare_exchange(dummy, &expected, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+}
+
+void spin_lock(unsigned long* dummy) {
+    while (!test_and_set(dummy)) {
+        // Busy wait if the lock is taken
+        while (__atomic_load_n(dummy, __ATOMIC_RELAXED) == UINT64_MAX - 1) {
+            // Lock is busy, just wait
+        }
+    }
+}
+
+void spin_unlock(unsigned long* dummy) {
+    *dummy = UINT64_MAX;
 }

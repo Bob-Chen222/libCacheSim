@@ -127,6 +127,7 @@ struct cache {
   // do not use this variable directly
   int64_t occupied_byte;
   pthread_spinlock_t lock;
+  uint64_t val_lock;
   bool warmup_complete;
   /************ end of private fields *************/
 
@@ -369,6 +370,10 @@ bool dump_eviction_age(const cache_t *cache, const char *ofilepath);
  */
 bool dump_cached_obj_age(cache_t *cache, const request_t *req,
                          const char *ofilepath);
+
+void spin_lock(unsigned long* dummy);
+
+void spin_unlock(unsigned long* dummy);
 
 #ifdef __cplusplus
 }

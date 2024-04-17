@@ -62,8 +62,8 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
   set_rand_seed(rand());
 
   // printf("num_thread: %lu\n", num_threads);
-  int req_cnt = 500000000;
-  int obj_num = 5000000;
+  int req_cnt = 10000000;
+  int obj_num = 100000;
   int warmup_cnt = 100;
   double alpha = 1;
 

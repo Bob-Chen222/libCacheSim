@@ -89,6 +89,9 @@ cache_stat_t *simulate_with_multi_caches(reader_t *reader, cache_t *caches[],
                                          int num_of_threads, 
                                          bool free_cache_when_finish);
 
+
+void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
+             char *ofilepath, int num_threads);
 #ifdef __cplusplus
 }
 #endif

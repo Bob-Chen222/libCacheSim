@@ -11,10 +11,11 @@ typedef struct {
   cache_obj_t *q_tail;
 } FIFO_params_t;
 
-/* used by LFU related */
+/* used by LRU related */
 typedef struct {
   cache_obj_t *q_head;
   cache_obj_t *q_tail;
+  pthread_mutex_t lock;
 } LRU_params_t;
 
 /* used by LFU related */
@@ -28,6 +29,7 @@ typedef struct freq_node {
 typedef struct {
   cache_obj_t *q_head;
   cache_obj_t *q_tail;
+  pthread_mutex_t lock;
   // clock uses one-bit counter
   int n_bit_counter;
   // max_freq = 1 << (n_bit_counter - 1)

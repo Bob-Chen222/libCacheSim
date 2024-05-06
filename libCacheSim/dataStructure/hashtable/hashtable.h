@@ -61,6 +61,28 @@ extern "C" {
 #define hashtable_add_ptr_to_monitoring(hashtable, ptr)
 #define HASHTABLE_VER 2
 
+#elif HASHTABLE_TYPE == PCHAINED_HASHTABLE
+#include "pchainedHashTable.h"
+#define create_hashtable(hashpower) create_pchained_hashtable(hashpower)
+#define hashtable_find(hashtable, obj_id) \
+  pchained_hashtable_find_obj_id(hashtable, obj_id)
+#define hashtable_find_obj_id(hashtable, req) \
+  pchained_hashtable_find_obj_id(hashtable, req)
+#define hashtable_find_obj(hashtable, cache_obj) \
+  pchained_hashtable_find_obj(hashtable, cache_obj)
+#define hashtable_insert(hashtable, req) \
+  pchained_hashtable_insert(hashtable, req)
+#define hashtable_insert_obj(hashtable, cache_obj) \
+  pchained_hashtable_insert_obj(hashtable, cache_obj)
+#define hashtable_delete(hashtable, cache_obj) \
+  pchained_hashtable_delete(hashtable, cache_obj)
+#define hashtable_rand_obj(hashtable) pchained_hashtable_rand_obj(hashtable)
+#define hashtable_foreach(hashtable, iter_func, user_data) \
+  pchained_hashtable_foreach(hashtable, iter_func, user_data)
+#define free_hashtable(hashtable) free_pchained_hashtable(hashtable)
+#define hashtable_add_ptr_to_monitoring(hashtable, ptr)
+#define HASHTABLE_VER 3
+
 #elif HASHTABLE_TYPE == CUCKCOO_HASHTABLE
 #include "cuckooHashTable.h"
 #error not implemented

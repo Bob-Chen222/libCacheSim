@@ -220,11 +220,12 @@ static cache_obj_t *FIFO_Reinsertion_insert(cache_t *cache,
       (FIFO_Reinsertion_params_t *)cache->eviction_params;
 
   cache_obj_t *obj = cache_insert_base(cache, req);
-  prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-
   obj->FIFO_Reinsertion.freq = 0;
   obj->FIFO_Reinsertion.last_access_vtime = cache->n_req;
   obj->misc.next_access_vtime = req->next_access_vtime;
+  
+  prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+
 
   return obj;
 }

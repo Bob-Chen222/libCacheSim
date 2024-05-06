@@ -160,7 +160,9 @@ static cache_obj_t *lpLRU_prob_find(cache_t *cache, const request_t *req,
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)
 #endif
+      pthread_spin_lock(&cache->lock);
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
+      pthread_spin_unlock(&cache->lock);
   }
   return cache_obj;
 }
@@ -179,7 +181,9 @@ static cache_obj_t *lpLRU_prob_insert(cache_t *cache, const request_t *req) {
   lpLRU_prob_params_t *params = (lpLRU_prob_params_t *)cache->eviction_params;
 
   cache_obj_t *obj = cache_insert_base(cache, req);
+  pthread_spin_lock(&cache->lock);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+  pthread_spin_lock(&cache->lock);
 
   return obj;
 }
@@ -220,6 +224,7 @@ static void lpLRU_prob_evict(cache_t *cache, const request_t *req) {
   // we chose to do it manually
   // remove_obj_from_list(&params->q_head, &params->q_tail, obj)
 
+  pthread_spin_lock(&cache->lock);
   params->q_tail = params->q_tail->queue.prev;
   if (likely(params->q_tail != NULL)) {
     params->q_tail->queue.next = NULL;
@@ -228,6 +233,7 @@ static void lpLRU_prob_evict(cache_t *cache, const request_t *req) {
     DEBUG_ASSERT(cache->n_obj == 1);
     params->q_head = NULL;
   }
+  pthread_spin_unlock(&cache->lock);
 
 #if defined(TRACK_DEMOTION)
   if (cache->track_demotion)

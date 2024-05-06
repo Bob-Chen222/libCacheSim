@@ -250,10 +250,11 @@ void free_arg(struct arguments *args) {
     free(args->eviction_algo[i]);
   }
 
+
   // free in simulator thread
-  // for (int i = 0; i < args->n_eviction_algo * args->n_cache_size; i++) {
-  //     args->caches[i]->cache_free(args->caches[i]);
-  // }
+  for (int i = 0; i < args->n_eviction_algo * args->n_cache_size; i++) {
+      args->caches[i]->cache_free(args->caches[i]);
+  }
 
   close_reader(args->reader);
 }
@@ -540,7 +541,7 @@ void print_parsed_args(struct arguments *args) {
 
   snprintf(output_str + n, OUTPUT_STR_LEN - n - 1, "\n");
 
-  INFO("%s", output_str);
+  // INFO("%s", output_str);
 
 #undef OUTPUT_STR_LEN
 }

@@ -5,6 +5,7 @@
 #include "../dataStructure/hashtable/hashtable.h"
 #include "../include/libCacheSim/cache.h"
 #include "../include/libCacheSim/prefetchAlgo.h"
+#include <stdatomic.h>
 
 /** this file contains both base function, which should be called by all
  *eviction algorithms, and the queue related functions, which should be called
@@ -44,6 +45,8 @@ cache_t *cache_struct_init(const char *const cache_name,
   cache->can_insert = cache_can_insert_default;
   cache->get_occupied_byte = cache_get_occupied_byte_default;
   cache->get_n_obj = cache_get_n_obj_default;
+  cache->warmup_complete = false;
+  cache->val_lock = UINT64_MAX;
 
   /* this option works only when eviction age tracking
    * is on in config.h */
@@ -174,32 +177,8 @@ bool cache_can_insert_default(cache_t *cache, const request_t *req) {
  */
 cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
                              const bool update_cache) {
+  DEBUG_ASSERT(req->obj_id != 0);
   cache_obj_t *cache_obj = hashtable_find(cache->hashtable, req);
-
-  // "update_cache = true" means that it is a real user request, use handle_find
-  // to update prefetcher's state
-  if (cache->prefetcher && cache->prefetcher->handle_find && update_cache) {
-    bool hit = (cache_obj != NULL);
-    cache->prefetcher->handle_find(cache, req, hit);
-  }
-
-  if (cache_obj != NULL) {
-#ifdef SUPPORT_TTL
-    if (cache_obj->exp_time != 0 && cache_obj->exp_time < req->clock_time) {
-      if (update_cache) {
-        cache->remove(cache, cache_obj->obj_id);
-      }
-
-      cache_obj = NULL;
-    }
-#endif
-
-    if (update_cache) {
-      cache_obj->misc.next_access_vtime = req->next_access_vtime;
-      cache_obj->misc.freq += 1;
-    }
-  }
-
   return cache_obj;
 }
 
@@ -223,12 +202,13 @@ cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
  * @return true if cache hit, false if cache miss
  */
 bool cache_get_base(cache_t *cache, const request_t *req) {
-  cache->n_req += 1;
+  // use atomic add
+  // needed for batched requests
+  // atomic_fetch_add(&cache->n_req, 1); //very unscalable
 
   VERBOSE("******* %s req %ld, obj %ld, obj_size %ld, cache size %ld/%ld\n",
           cache->cache_name, cache->n_req, req->obj_id, req->obj_size,
           cache->get_occupied_byte(cache), cache->cache_size);
-
   cache_obj_t *obj = cache->find(cache, req, true);
   bool hit = (obj != NULL);
 
@@ -244,19 +224,17 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
     VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
              req->obj_id);
   } else {
-    while (cache->get_occupied_byte(cache) + req->obj_size +
+    if (cache->get_occupied_byte(cache) + req->obj_size +
                cache->obj_md_size >
            cache->cache_size) {
       cache->evict(cache, req);
     }
-    cache->insert(cache, req);
+    DEBUG_ASSERT(req->obj_id != 0);
+    cache->insert(cache, req); //slightly scalable 
   }
 
-  if (cache->prefetcher && cache->prefetcher->prefetch) {
-    cache->prefetcher->prefetch(cache, req);
-  }
 
-  return hit;
+  return false;
 }
 
 /**
@@ -270,24 +248,13 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
  * @return the inserted object
  */
 cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
+  DEBUG_ASSERT(req->obj_id != 0);
   cache_obj_t *cache_obj = hashtable_insert(cache->hashtable, req);
-  cache->occupied_byte +=
-      (int64_t)cache_obj->obj_size + (int64_t)cache->obj_md_size;
-  cache->n_obj += 1;
-
-#ifdef SUPPORT_TTL
-  if (cache->default_ttl != 0 && req->ttl == 0) {
-    cache_obj->exp_time = (int32_t)cache->default_ttl + req->clock_time;
+  if (cache_obj == NULL) {
+    return NULL;
   }
-#endif
-
-#if defined(TRACK_EVICTION_V_AGE) || defined(TRACK_DEMOTION) || \
-    defined(TRACK_CREATE_TIME)
-  cache_obj->create_time = CURR_TIME(cache, req);
-#endif
-
-  cache_obj->misc.next_access_vtime = req->next_access_vtime;
-  cache_obj->misc.freq = 0;
+  __atomic_fetch_add(&cache->n_obj, 1, __ATOMIC_RELAXED);
+  __atomic_fetch_add(&cache->occupied_byte, req->obj_size + cache->obj_md_size, __ATOMIC_RELAXED);
 
   return cache_obj;
 }
@@ -302,22 +269,6 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
  */
 void cache_evict_base(cache_t *cache, cache_obj_t *obj,
                       bool remove_from_hashtable) {
-#if defined(TRACK_EVICTION_V_AGE)
-  if (cache->track_eviction_age) {
-    record_eviction_age(cache, obj, CURR_TIME(cache, req) - obj->create_time);
-  }
-#endif
-  if (cache->prefetcher && cache->prefetcher->handle_evict) {
-    request_t *check_req = new_request();
-    check_req->obj_id = obj->obj_id;
-    check_req->obj_size = obj->obj_size;
-    // check_req->ttl = 0; // re-add objects should be?
-    cache_remove_obj_base(cache, obj, remove_from_hashtable);
-    cache->prefetcher->handle_evict(cache, check_req);
-    my_free(sizeof(request_t), check_req);
-    return;
-  }
-
   cache_remove_obj_base(cache, obj, remove_from_hashtable);
 }
 
@@ -332,11 +283,10 @@ void cache_evict_base(cache_t *cache, cache_obj_t *obj,
  */
 void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
                            bool remove_from_hashtable) {
-  DEBUG_ASSERT(cache->occupied_byte >= obj->obj_size + cache->obj_md_size);
-  cache->occupied_byte -= (obj->obj_size + cache->obj_md_size);
-  cache->n_obj -= 1;
+  __atomic_fetch_sub(&cache->n_obj, 1, __ATOMIC_RELAXED);
+  __atomic_fetch_sub(&cache->occupied_byte, obj->obj_size + cache->obj_md_size, __ATOMIC_RELAXED);
   if (remove_from_hashtable) {
-    hashtable_delete(cache->hashtable, obj);
+   hashtable_delete(cache->hashtable, obj);
   }
 }
 
@@ -493,4 +443,23 @@ bool dump_cached_obj_age(cache_t *cache, const request_t *req,
 
   fclose(ofile);
   return true;
+}
+
+static uint64_t test_and_set(uint64_t *dummy) {
+    uint64_t expected = UINT64_MAX;
+    uint64_t new = UINT64_MAX - 1;
+    return __atomic_compare_exchange(dummy, &expected, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+}
+
+void spin_lock(unsigned long* dummy) {
+    while (!test_and_set(dummy)) {
+        // Busy wait if the lock is taken
+        while (__atomic_load_n(dummy, __ATOMIC_RELAXED) == UINT64_MAX - 1) {
+            // Lock is busy, just wait
+        }
+    }
+}
+
+void spin_unlock(unsigned long* dummy) {
+    *dummy = UINT64_MAX;
 }

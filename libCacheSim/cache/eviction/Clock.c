@@ -90,6 +90,8 @@ cache_t *Clock_init(const common_cache_params_t ccache_params,
              params->n_bit_counter);
   }
 
+  pthread_spin_init(&cache->lock, 0);
+
   return cache;
 }
 
@@ -147,8 +149,9 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req,
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
-    if (obj->clock.freq < params->max_freq) {
-      obj->clock.freq += 1;
+    int32_t freq = atomic_load(&obj->clock.freq);
+    if (freq < params->max_freq) {
+      atomic_fetch_add(&obj->clock.freq, 1);
     }
 #ifdef USE_BELADY
     obj->next_access_vtime = req->next_access_vtime;
@@ -169,12 +172,16 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req,
  * @return the inserted object
  */
 static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
-  Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-
   cache_obj_t *obj = cache_insert_base(cache, req);
-  prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-
-  obj->clock.freq = 0;
+  if (obj != NULL){
+    FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
+    if (!cache->warmup_complete){
+      prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+    }else{
+      T_prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+      atomic_store(&obj->clock.freq, 0);
+    }
+  }
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -222,18 +229,22 @@ static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
  * @param evicted_obj if not NULL, return the evicted object to caller
  */
 static void Clock_evict(cache_t *cache, const request_t *req) {
-  Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
 
+  Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
+  pthread_spin_lock(&cache->lock);
+  // spin_lock(&cache->val_lock);
   cache_obj_t *obj_to_evict = params->q_tail;
+  cache_obj_t *obj_to_evict_next = obj_to_evict->queue.prev;
   while (obj_to_evict->clock.freq >= 1) {
     obj_to_evict->clock.freq -= 1;
-    params->n_obj_rewritten += 1;
-    params->n_byte_rewritten += obj_to_evict->obj_size;
-    move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
+    T_prepend_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
+    params->q_tail = obj_to_evict_next;
     obj_to_evict = params->q_tail;
+    obj_to_evict_next = obj_to_evict->queue.prev;
   }
-
-  remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
+  obj_to_evict = T_evict_last_obj(&params->q_head, &params->q_tail);
+  pthread_spin_unlock(&cache->lock);
+  spin_unlock(&cache->val_lock);
   cache_evict_base(cache, obj_to_evict, true);
 }
 

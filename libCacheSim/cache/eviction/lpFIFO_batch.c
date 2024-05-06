@@ -45,6 +45,7 @@ static const char *DEFAULT_PARAMS = "n-bit-counter=1,batch-size=0.2";
 // ****                                                               ****
 // ***********************************************************************
 
+static void lpFIFO_print(cache_t *cache);
 static void lpFIFO_batch_parse_params(cache_t *cache,
                                const char *cache_specific_params);
 static void lpFIFO_batch_free(cache_t *cache);
@@ -157,7 +158,6 @@ static bool lpFIFO_batch_get(cache_t *cache, const request_t *req) {
   //   printf("n-req: %ld\n", cache->n_req);
   // }
   if ((cache->n_req + 1)% params->batch_size == 0) {
-    // printf("promoting at n-req: %ld\n", cache->n_req);
     lpFIFO_batch_promote_all(cache, req);
   }
   return cache_get_base(cache, req);
@@ -185,10 +185,10 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
   cache_t *buff = params->buffer;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache && !buff->find(buff, req, false)) {
-    while (!buff->can_insert(buff, req)) {
-      printf("should never call eviction\n");
-      buff->evict(buff, NULL);
-    }
+    // while (!buff->can_insert(buff, req)) {
+    //   printf("should never call eviction\n");
+    //   buff->evict(buff, NULL);
+    // }
     assert((cache->get_occupied_byte(cache) + req->obj_size +
               cache->obj_md_size >
           cache->cache_size));
@@ -216,8 +216,6 @@ static cache_obj_t *lpFIFO_batch_insert(cache_t *cache, const request_t *req) {
 
   cache_obj_t *obj = cache_insert_base(cache, req);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-
-  obj->lpFIFO_batch.freq = 0;
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -353,6 +351,20 @@ static bool lpFIFO_batch_remove(cache_t *cache, const obj_id_t obj_id) {
   return true;
 }
 
+static void lpFIFO_print(cache_t *cache) {
+  lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
+  cache_obj_t *cur = params->q_head;
+  // print from the most recent to the least recent
+  if (cur == NULL) {
+    printf("empty\n");
+  }
+  while (cur != NULL) {
+    printf("%ld->", cur->obj_id);
+    cur = cur->queue.next;
+  }
+  printf("\n");
+}
+
 // ***********************************************************************
 // ****                                                               ****
 // ****                  parameter set up functions                   ****
@@ -395,6 +407,7 @@ static void lpFIFO_batch_parse_params(cache_t *cache,
       if (strchr(value, '.') != NULL) {
         // input is a float
         params->batch_size = (uint64_t)(strtof(value, &end) * cache->cache_size);
+        // printf("batch-size: %lu\n", params->batch_size);
         params->promotion_ratio = strtof(value, &end);
       }
       else {

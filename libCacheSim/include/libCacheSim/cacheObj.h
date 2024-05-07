@@ -20,6 +20,9 @@ extern "C" {
 // ############## per object metadata used in eviction algorithm cache obj
 typedef struct {
   int64_t freq;
+} FIFO_obj_metadata_t;
+typedef struct {
+  int64_t freq;
 } LFU_obj_metadata_t;
 
 typedef struct {
@@ -88,7 +91,7 @@ typedef struct {
 } lpFIFO_shards_obj_metadata_t;
 
 typedef struct {
-  int freq;
+  uint64_t last_vtime;
 }delay_obj_metadata_t;
 
 typedef struct {
@@ -113,6 +116,7 @@ typedef struct {
 
 typedef struct {
   int64_t last_access_vtime;
+  int32_t freq;
 } RandomTwo_obj_metadata_t;
 
 typedef struct {
@@ -177,6 +181,7 @@ typedef struct cache_obj {
     Hyperbolic_obj_metadata_t hyperbolic;
     RandomTwo_obj_metadata_t RandomTwo;
     Belady_obj_metadata_t Belady;
+    FIFO_obj_metadata_t FIFO;
     FIFO_Merge_obj_metadata_t FIFO_Merge;
     FIFO_Reinsertion_obj_metadata_t FIFO_Reinsertion;
     SFIFO_obj_metadata_t SFIFO;

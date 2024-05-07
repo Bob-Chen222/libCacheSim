@@ -137,6 +137,7 @@ static cache_obj_t *LRU_find(cache_t *cache, const request_t *req,
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)
 #endif
+      
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
   }
   return cache_obj;

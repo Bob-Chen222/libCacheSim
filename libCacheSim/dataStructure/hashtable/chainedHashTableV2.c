@@ -64,14 +64,6 @@ static inline void add_to_bucket(hashtable_t *hashtable,
     hashtable->ptr_table[hv] = cache_obj;
     return;
   }
-  // I believe that the object is a pointer so the address of hashtable->ptr_table[hv] should be multiple of 8
-  // if this is the case, we will utilize the last bit to indicate whether there is a thread that is currently using this bucket
-  cache_obj_t *head_ptr = NULL;
-
-  while ((unsigned long)hashtable->ptr_table[hv] & (0x1)) {
-    // spin
-  }
-
   head_ptr = hashtable->ptr_table[hv];
 
   cache_obj->hash_next = head_ptr;

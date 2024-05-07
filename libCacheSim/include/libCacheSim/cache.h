@@ -124,7 +124,7 @@ struct cache {
   // use cache->get_occupied_byte to obtain the number of objects in the cache
   // do not use this variable directly
   int64_t occupied_byte;
-  pthread_mutex_t lock;
+  int64_t one_hit_count;
 
   /************ end of private fields *************/
 

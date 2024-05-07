@@ -134,6 +134,7 @@ static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
     obj->RandomTwo.last_access_vtime = cache->n_req;
+    obj->RandomTwo.freq++;
   }
 
   return obj;
@@ -152,7 +153,7 @@ static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
 static cache_obj_t *RandomK_insert(cache_t *cache, const request_t *req) {
   cache_obj_t *obj = cache_insert_base(cache, req);
   obj->RandomTwo.last_access_vtime = cache->n_req;
-
+  obj->RandomTwo.freq = 0;
   return obj;
 }
 
@@ -193,6 +194,9 @@ static cache_obj_t *RandomK_select(cache_t *cache, const int k) {
 static void RandomK_evict(cache_t *cache, const request_t *req) {
   cache_obj_t *obj_to_evict = RandomK_to_evict(cache, req);
   DEBUG_ASSERT(obj_to_evict->obj_size != 0);
+  if (obj_to_evict->RandomTwo.freq == 0) {
+    cache->one_hit_count++;
+  }
   cache_evict_base(cache, obj_to_evict, true);
 }
 

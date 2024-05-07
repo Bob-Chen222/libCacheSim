@@ -18,8 +18,7 @@ typedef struct {
   // fields added in addition to clock-
   uint64_t delay_time; // determines how often promotion is performed
   float delay_ratio;
-  cache_obj_t *d_head;
-  cache_obj_t *d_tail;
+  uint64_t vtime;
 } LRU_delay_params_t;
 
 static const char *DEFAULT_PARAMS = "delay-time=1";
@@ -83,22 +82,16 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
   LRU_delay_params_t *params = malloc(sizeof(LRU_delay_params_t));
   params->q_head = NULL;
   params->q_tail = NULL;
-  params->d_head = NULL;
-  params->d_tail = NULL;
   params->delay_ratio = 0.0;
   cache->eviction_params = params;
+  params->vtime = 0;
 
   if (cache_specific_params != NULL) {
     LRU_delay_parse_params(cache, cache_specific_params);
   }
 
+  printf("delay time: %llu\n", params->delay_time);
 
-  // add d dummy nodes to the buffer
-  for (int i = 0; i < params->delay_time; i++) {
-    request_t *dummy_req = new_request();
-    dummy_req->obj_id = 0;
-    prepend_obj_to_head(&params->d_head, &params->d_tail, create_cache_obj_from_request(dummy_req));
-  }
   
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "LRU_delay_%f",
            params->delay_ratio);
@@ -161,52 +154,22 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
   cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
 
   // no matter what, we need to check the buffer and see i
-  //f there is a thing that we will reinsert
 
-  cache_obj_t* obj_reinserted = params->d_tail;
-  request_t *local_req = new_request();
-  copy_cache_obj_to_request(local_req, obj_reinserted);
-  remove_obj_from_list(&params->d_head, &params->d_tail, obj_reinserted);
-  free_request(local_req);
-
-  DEBUG_ASSERT(obj_reinserted != NULL);
-
-  
-
-  if (obj_reinserted->obj_id != 0){
-        // if not, move the object to the front
-    cache_obj_t *obj = cache_find_base(cache, local_req, false);
-    obj_reinserted->delay_count.freq = 0;
-    if (obj){
-      // it is reinserted so we need to clear the freq
-      obj->delay_count.freq = 0;
-      move_obj_to_head(&params->q_head, &params->q_tail, obj);
-    }
+  params->vtime++;
+  if (cache_obj && likely(update_cache) && params->vtime - cache_obj->delay_count.last_vtime > params->delay_time) {
+    /* lru_head is the newest, move cur obj to lru_head */
+#ifdef USE_BELADY
+    if (req->next_access_vtime != INT64_MAX)
+#endif
+    //  check whether the last access time is greater than the delay time
+      move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
+      // update the last access time
+      cache_obj->delay_count.last_vtime = params->vtime;
   }
 
-
-  if (cache_obj && likely(update_cache)) {
-      // update the buffer
-      // first check if the object is already in the buffer
-    if (cache_obj->delay_count.freq == 0){
-      // meaning the object is not in the buffer
-      prepend_obj_to_head(&params->d_head, &params->d_tail, create_cache_obj_from_request(req));
-      cache_obj->delay_count.freq = 1;
-    }else{
-      request_t *dummy_req = new_request();
-      dummy_req->obj_id = 0;
-      prepend_obj_to_head(&params->d_head, &params->d_tail, create_cache_obj_from_request(dummy_req));
-      free_request(dummy_req);
-    }
-  }else{
-    // if the object is not in the cache, we need to add a dummy object to the buffer
-    request_t *dummy_req = new_request();
-    dummy_req->obj_id = 0;
-    prepend_obj_to_head(&params->d_head, &params->d_tail, create_cache_obj_from_request(dummy_req));
-    free_request(dummy_req);
-  }
   return cache_obj;
 }
+
 
 /**
  * @brief insert an object into the cache,
@@ -221,6 +184,7 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
 static cache_obj_t *LRU_delay_insert(cache_t *cache, const request_t *req) {
   LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_insert_base(cache, req);
+  obj->delay_count.last_vtime = params->vtime;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
   return obj;
@@ -256,7 +220,7 @@ static cache_obj_t *LRU_delay_to_evict(cache_t *cache, const request_t *req) {
 static void LRU_delay_evict(cache_t *cache, const request_t *req) {
   LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
   cache_obj_t *obj_to_evict = params->q_tail;
-  obj_to_evict->delay_count.freq = 0;
+  obj_to_evict->delay_count.last_vtime = 0;
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
   cache_remove_obj_base(cache, obj_to_evict, true);
 }
@@ -342,7 +306,6 @@ static void LRU_delay_parse_params(cache_t *cache,
     if (strcasecmp(key, "delay-time") == 0) {
       if (strchr(value, '.') != NULL) {
         params->delay_time = (uint64_t)((strtof(value, &end)) * cache->cache_size);
-        printf("delay time is %llu\n", params->delay_time);
         params->delay_ratio = strtof(value, &end);
         if (params->delay_time == 0) {
           params->delay_time = 1;

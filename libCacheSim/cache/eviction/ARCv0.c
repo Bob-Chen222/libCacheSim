@@ -117,14 +117,14 @@ cache_t *ARCv0_init(const common_cache_params_t ccache_params,
   params->p = 0;
 
   common_cache_params_t ccache_params_local = ccache_params;
-  params->T1 = LRU_init(ccache_params_local, NULL);
-  params->B1 = LRU_init(ccache_params_local, NULL);
+  params->T1 = Clock_init(ccache_params_local, NULL);
+  params->B1 = Clock_init(ccache_params_local, NULL);
 #ifdef LAZY_PROMOTION
   params->T2 = Clock_init(ccache_params_local, NULL);
 #else
-  params->T2 = LRU_init(ccache_params_local, NULL);
+  params->T2 = Clock_init(ccache_params_local, NULL);
 #endif
-  params->B2 = LRU_init(ccache_params_local, NULL);
+  params->B2 = Clock_init(ccache_params_local, NULL);
 
   params->curr_obj_in_L1_ghost = false;
   params->curr_obj_in_L2_ghost = false;

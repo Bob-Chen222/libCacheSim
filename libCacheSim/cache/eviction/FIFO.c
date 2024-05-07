@@ -122,7 +122,11 @@ static bool FIFO_get(cache_t *cache, const request_t *req) {
  */
 static cache_obj_t *FIFO_find(cache_t *cache, const request_t *req,
                                const bool update_cache) {
-  return cache_find_base(cache, req, update_cache);
+  cache_obj_t *obj = cache_find_base(cache, req, update_cache);
+  if (obj != NULL && update_cache) {
+    obj->FIFO.freq++;
+  }
+  return obj;
 }
 
 /**
@@ -138,9 +142,8 @@ static cache_obj_t *FIFO_find(cache_t *cache, const request_t *req,
 static cache_obj_t *FIFO_insert(cache_t *cache, const request_t *req) {
   FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_insert_base(cache, req);
+  obj->FIFO.freq = 0;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-  // print_FIFO(cache);
-
   return obj;
 }
 
@@ -186,6 +189,9 @@ static void FIFO_evict(cache_t *cache, const request_t *req) {
     params->q_head = NULL;
   }
 
+  if (obj_to_evict->FIFO.freq == 0) {
+    cache->one_hit_count++;
+  }
   cache_evict_base(cache, obj_to_evict, true);
 }
 

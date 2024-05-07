@@ -105,7 +105,7 @@ cache_t *LeCaRv0_init(const common_cache_params_t ccache_params,
   params->w_lru = params->w_lfu = 0.50;
   params->n_hit_lru_history = params->n_hit_lfu_history = 0;
 
-  params->LRU = LRU_init(ccache_params, NULL);
+  params->LRU = Clock_init(ccache_params, NULL);
   params->LFU = LFU_init(ccache_params, NULL);
 
   common_cache_params_t ccache_params_g = ccache_params;
@@ -113,8 +113,8 @@ cache_t *LeCaRv0_init(const common_cache_params_t ccache_params,
   ccache_params_g.cache_size = (uint64_t)((double)ccache_params.cache_size / 2 *
                                           params->ghost_list_factor);
 
-  params->LRU_g = LRU_init(ccache_params_g, NULL);
-  params->LFU_g = LRU_init(ccache_params_g, NULL);
+  params->LRU_g = Clock_init(ccache_params_g, NULL);
+  params->LFU_g = Clock_init(ccache_params_g, NULL);
 
   return cache;
 }

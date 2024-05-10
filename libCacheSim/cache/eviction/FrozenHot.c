@@ -198,7 +198,6 @@ static void FH_free(cache_t *cache) {
   FH_params_t* params = (FH_params_t*)cache->eviction_params;
   // destroy the lock
   pthread_rwlock_destroy(&params->constructing);
-  // free_hashtable(params->hash_table_f);
   if (params->hash_table_f != NULL){
     my_free(sizeof(cache_obj_t *) * hashsize(params->hash_table_f->hashpower),
             params->hash_table_f->ptr_table);
@@ -291,12 +290,12 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
 
   // check whether we need to reconstruct
   // TODO: I believe use rw lock in this case is the best
-  float cur_miss_ratio = ((float)params->frozen_cache_miss / (float)params->frozen_cache_access);
-  if (cur_miss_ratio - params->regular_miss_ratio > params->miss_ratio_diff){
-    // we need to reconstruct
-    INFO("start deconstructing\n");
-    deconstruction(cache, params);
-  }
+  // float cur_miss_ratio = ((float)params->frozen_cache_miss / (float)params->frozen_cache_access);
+  // if (cur_miss_ratio - params->regular_miss_ratio > params->miss_ratio_diff){
+  //   // we need to reconstruct
+  //   INFO("start deconstructing\n");
+  //   deconstruction(cache, params);
+  // }
   return false;
 }
 
@@ -345,25 +344,29 @@ static void deconstruction(cache_t *cache, FH_params_t *params){
 }
 
 static void construction(cache_t *cache, FH_params_t *params){
+  DEBUG_ASSERT(!contains_duplicates(params->q_head));
   pthread_rwlock_wrlock(&params->constructing);
   // create a new hash table
   // TODO: hashtable can be much smaller
-  params->hash_table_f = create_hashtable(20);
-  printf("first debug\n");
-  // DEBUG_ASSERT(is_doublyll_intact(params->q_head, params->q_tail));
-  printf("first debug passed\n");
+  params->hash_table_f = create_hashtable(10);
   // split the list
   cache_obj_t *cur = params->q_head;
   int count = 0;
   params->f_head = NULL;
+  // error, but not sure why.
+  //possible reason: the list contains duplicates
+  request_t* req = new_request();
   while (count < params->split_obj){
     DEBUG_ASSERT(cur != NULL);
     // insert the object into hashtable
+    copy_cache_obj_to_request(req, cur);
     hashtable_insert_obj(params->hash_table_f, cur);
+    // hashtable_insert(params->hash_table_f, req);
     // move cur
     cur = cur->queue.next;
     count++;
   }
+  free_request(req);
   params->f_tail = cur->queue.prev;
   if (params->f_tail != NULL){
     params->f_head = params->q_head;

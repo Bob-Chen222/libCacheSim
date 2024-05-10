@@ -12,6 +12,15 @@
 #include "../../dataStructure/hashtable/hashtable.h"
 #include "../../include/libCacheSim/evictionAlgo.h"
 
+// TODO: construction at the background
+// TODO: during construction, serving using regular LRU but do not promote
+// TODO: when construction is ready, set the flag and all the requests go to the frozen mode
+// TODO: when deciding the split point, also allow new objects to be insert at the front, freeze at approximate point
+// and then start the construciton using one extra thread
+
+// free of hashtable can be done during the construction phase instead of the deconstruction phase
+// merging two linkedlist can be done without doing it in background???
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -43,7 +52,7 @@ typedef struct {
 
 } FH_params_t;
 
-static const char *DEFAULT_PARAMS = "split_point=0.5,miss_ratio_diff=0.05";
+static const char *DEFAULT_PARAMS = "split_point=0.8,miss_ratio_diff=0.01";
 // ***********************************************************************
 // ****                                                               ****
 // ****                   function declarations                       ****
@@ -199,9 +208,7 @@ static void FH_free(cache_t *cache) {
   // destroy the lock
   pthread_rwlock_destroy(&params->constructing);
   if (params->hash_table_f != NULL){
-    my_free(sizeof(cache_obj_t *) * hashsize(params->hash_table_f->hashpower),
-            params->hash_table_f->ptr_table);
-    my_free(sizeof(hashtable_t), params->hash_table_f);
+    free_hashtable(params->hash_table_f);
   }
   free(cache->eviction_params);
   cache_struct_free(cache);
@@ -251,13 +258,13 @@ static bool FH_LRU_get(cache_t *cache, const request_t *req, FH_params_t *params
  * @return true if cache hit, false if cache miss
  */
 static bool FH_get(cache_t *cache, const request_t *req) {
-  // atomic_fetch_add(&cache->n_req, 1); //very unscalable
   // we just first do very regular LRU cache
   FH_params_t *params = (FH_params_t *)cache->eviction_params;
   // other threads need to check whether the cache is currently in construction
   pthread_rwlock_rdlock(&params->constructing);
   if (params->is_frozen){
     // do the FH operations including possible deconstructions
+    pthread_rwlock_unlock(&params->constructing);
     return FH_Frozen_get(cache, req, params);
   }else{
     // do the regular cache operations including possible constructions
@@ -275,7 +282,6 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
   //TODO: create a new function for hashtable that does not need a lock
   cache_obj_t *obj = hashtable_find_obj_id(params->hash_table_f, req->obj_id);
   if (obj != NULL){
-     pthread_rwlock_unlock(&params->constructing);
     return true;
   }else{
     // do regular LRU cache operations and change the related statistics
@@ -283,19 +289,18 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
     if (!result){
       params->frozen_cache_miss++;
     }else{
-       pthread_rwlock_unlock(&params->constructing);
       return true;
     }
   }
 
   // check whether we need to reconstruct
   // TODO: I believe use rw lock in this case is the best
-  // float cur_miss_ratio = ((float)params->frozen_cache_miss / (float)params->frozen_cache_access);
-  // if (cur_miss_ratio - params->regular_miss_ratio > params->miss_ratio_diff){
-  //   // we need to reconstruct
-  //   INFO("start deconstructing\n");
-  //   deconstruction(cache, params);
-  // }
+  float cur_miss_ratio = ((float)params->frozen_cache_miss / (float)params->frozen_cache_access);
+  if (cur_miss_ratio - params->regular_miss_ratio > params->miss_ratio_diff){
+    // we need to reconstruct
+    INFO("start deconstructing\n");
+    deconstruction(cache, params);
+  }
   return false;
 }
 
@@ -311,6 +316,7 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
   // check whether it is time for reconstruction
   // 1. the cache should be full
   // 2. the cache should already wait for 2 * cache_size accesses
+  // pthread_rwlock_unlock(&params->constructing);
   if (params->regular_cache_access >= 2 * cache->cache_size && cache->n_obj >= cache->cache_size){
     // we need to re/construct
     INFO("start re/constructing\n");
@@ -332,9 +338,7 @@ static void deconstruction(cache_t *cache, FH_params_t *params){
     params->q_head = params->d_head;
   }
   // destroy the hash table, but cannot delete the objects
-  my_free(sizeof(cache_obj_t *) * hashsize(params->hash_table_f->hashpower),
-          params->hash_table_f->ptr_table);
-  my_free(sizeof(hashtable_t), params->hash_table_f);
+  free_hashtable(params->hash_table_f);
   params->regular_cache_access = 0;
   params->regular_cache_miss = 0;
   params->regular_miss_ratio = 0;
@@ -344,8 +348,10 @@ static void deconstruction(cache_t *cache, FH_params_t *params){
 }
 
 static void construction(cache_t *cache, FH_params_t *params){
-  DEBUG_ASSERT(!contains_duplicates(params->q_head));
-  pthread_rwlock_wrlock(&params->constructing);
+  // DEBUG_ASSERT(!contains_duplicates(params->q_head));
+  if (pthread_rwlock_trywrlock(&params->constructing)){
+    return;
+  } //TODO: remember the best is to add one if branch to prevent multiple reconstruction
   // create a new hash table
   // TODO: hashtable can be much smaller
   params->hash_table_f = create_hashtable(10);
@@ -360,8 +366,8 @@ static void construction(cache_t *cache, FH_params_t *params){
     DEBUG_ASSERT(cur != NULL);
     // insert the object into hashtable
     copy_cache_obj_to_request(req, cur);
-    hashtable_insert_obj(params->hash_table_f, cur);
-    // hashtable_insert(params->hash_table_f, req);
+    // hashtable_insert_obj(params->hash_table_f, cur);
+    hashtable_insert(params->hash_table_f, req);
     // move cur
     cur = cur->queue.next;
     count++;

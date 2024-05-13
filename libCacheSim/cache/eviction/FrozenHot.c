@@ -52,6 +52,8 @@ typedef struct {
   bool called_construction; //this is to ensure that no more than one construction is called at a time
   bool is_frozen;
 
+  int num_extra_thread;
+
 } FH_params_t;
 
 static const char *DEFAULT_PARAMS = "split_point=0.2,miss_ratio_diff=0.01";
@@ -120,6 +122,7 @@ cache_t *FH_init(const common_cache_params_t ccache_params,
   params->hash_table_f = NULL;
   params->constucting = false;
   params->called_construction = false;
+  params->num_extra_thread = 0;
   FH_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
     FH_parse_params(cache, cache_specific_params);
@@ -225,6 +228,9 @@ static cache_obj_t *FH_lru_insert(cache_t *cache, const request_t *req) {
  */
 static void FH_free(cache_t *cache) { 
   FH_params_t* params = (FH_params_t*)cache->eviction_params;
+  // looping
+  while (params->num_extra_thread){
+  }
   // destroy the lock
   if (params->hash_table_f != NULL){
     free_hashtable(params->hash_table_f);
@@ -292,6 +298,7 @@ static bool FH_get(cache_t *cache, const request_t *req) {
 
 static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *params){
   // we first check whether the frozen hashtable has the requested entry
+  // printf("frozen id: %d\n", req->obj_id);
   
   params->frozen_cache_access++;
   // this is read-only so we in fact do not add any lock on this hashtable
@@ -313,11 +320,15 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
   // check whether we need to reconstruct
   // TODO: I believe use rw lock in this case is the best
   float cur_miss_ratio = ((float)params->frozen_cache_miss / (float)params->frozen_cache_access);
-  if (cur_miss_ratio - params->regular_miss_ratio > params->miss_ratio_diff){
+  if (cur_miss_ratio - params->regular_miss_ratio > params->miss_ratio_diff && params->frozen_cache_access > cache->cache_size){
     // we need to reconstruct
     // TODO: check deconstruction
-    INFO("start deconstructing\n");
-    deconstruction(cache, params);
+    bool TRUE = false;
+    bool FALSE = true;
+    if (__atomic_compare_exchange(&params->called_construction, &TRUE, &FALSE, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
+      INFO("start deconstructing\n");
+      deconstruction(cache, params);
+    }
   }
   return false;
 }
@@ -337,9 +348,9 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
   // pthread_rwlock_unlock(&params->constructing);
   if ((params->regular_cache_access >= 2 * cache->cache_size) && (cache->n_obj >= cache->cache_size)){
     // do compare and set and if it is true then go on
-    bool flag = false;
-    bool flag2 = true;
-    if (__atomic_compare_exchange(&params->called_construction, &flag, &flag2, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
+    bool TRUE = false;
+    bool FALSE = true;
+    if (__atomic_compare_exchange(&params->called_construction, &TRUE, &FALSE, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
       INFO("start constructing\n");
       pthread_t construct_thread;
       pthread_create(&construct_thread, NULL, (void *)construction, (void *)cache);
@@ -352,31 +363,33 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
 
 static void deconstruction(cache_t *cache, FH_params_t *params){
   // merge the two lists
-  params->q_tail = params->d_tail;
   if (params->f_head != NULL){
+    params->f_tail->queue.next = params->q_head;
+    params->q_head->queue.prev = params->f_tail;
     params->q_head = params->f_head;
-    params->f_tail->queue.next = params->d_head;
-    params->d_head->queue.prev = params->f_tail;
-  }else{
-    params->q_head = params->d_head;
   }
   // destroy the hash table, but cannot delete the objects
   params->regular_cache_access = 0;
   params->regular_cache_miss = 0;
   params->regular_miss_ratio = 0;
+  params->f_head = NULL;
 
   params->is_frozen = false;
+  params->called_construction = false;
 }
 
 static void construction(void* c){
   cache_t *cache = (cache_t *)c;
   FH_params_t *params = (FH_params_t *)cache->eviction_params;
+  atomic_fetch_add(&params->num_extra_thread, 1);
   params->regular_miss_ratio = ((float)params->regular_cache_miss / (float)(params->regular_cache_access - cache->cache_size));
   DEBUG_ASSERT(params->regular_miss_ratio >= 0);
   params->regular_cache_access = 0;
   params->regular_cache_miss = 0;
   // // destroy any previous hashtable
   if (params->hash_table_f != NULL){
+    DEBUG_ASSERT(params->hash_table_f->ptr_table != NULL);
+    free_chained_hashtable_f_v2(params->hash_table_f);
     my_free(sizeof(cache_obj_t *) * hashsize(params->hash_table_f->hashpower),
           params->hash_table_f->ptr_table);
     my_free(sizeof(hashtable_t), params->hash_table_f);
@@ -387,15 +400,15 @@ static void construction(void* c){
   int count = 0;
   
   int miss_cur = params->regular_cache_miss; //keep track of current misses so that we know how many newly inserted is in the hash
-  printf("miss_cur is %d\n", miss_cur);
-  printf("regular_cache_miss is %lu\n", params->regular_cache_miss);
-  printf("split_obj is %d\n", params->split_obj);
+  // printf("miss_cur is %d\n", miss_cur);
+  // printf("regular_cache_miss is %lu\n", params->regular_cache_miss);
+  // printf("split_obj is %d\n", params->split_obj);
   while (count + params -> regular_cache_miss - miss_cur < params->split_obj){
     DEBUG_ASSERT(cur != NULL);
     cur = cur->queue.next;
     count++;
   }
-  printf("final count is %d\n", count);
+  // printf("final count is %d\n", count);
 
   bool TRUE = true;
   bool FALSE = false;
@@ -407,6 +420,7 @@ static void construction(void* c){
 
   // after decided which point, we serve the request but do not promote the object
   for (cache_obj_t* tmp = params->q_head; tmp != cur; tmp = tmp->queue.next){
+    DEBUG_ASSERT(tmp != NULL);
     hashtable_insert_obj(params->hash_table_f, tmp);
   }
   params->f_head = params->q_head;
@@ -424,8 +438,9 @@ static void construction(void* c){
  
 
   __atomic_store(&params->is_frozen, &TRUE, __ATOMIC_RELAXED);
-  __atomic_store(&params->called_construction, &TRUE, __ATOMIC_RELAXED);
+  __atomic_store(&params->called_construction, &FALSE, __ATOMIC_RELAXED);
   __atomic_store(&params->constucting, &FALSE, __ATOMIC_RELAXED);
+  __atomic_fetch_sub(&params->num_extra_thread, 1, __ATOMIC_RELAXED);
   DEBUG_ASSERT(params->f_head->queue.prev == NULL);
   printf("construction is completed\n");
 }

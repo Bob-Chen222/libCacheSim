@@ -229,8 +229,8 @@ static cache_obj_t *FH_lru_insert(cache_t *cache, const request_t *req) {
 static void FH_free(cache_t *cache) { 
   FH_params_t* params = (FH_params_t*)cache->eviction_params;
   // looping
-  while (params->num_extra_thread){
-  }
+  // while (params->num_extra_thread){
+  // }
   // destroy the lock
   if (params->hash_table_f != NULL){
     free_hashtable(params->hash_table_f);
@@ -307,7 +307,6 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
   if (obj != NULL){
     return true;
   }else{
-    DEBUG_ASSERT(!contains_object(params->f_head, obj));
     // do regular LRU cache operations and change the related statistics
     bool result = FH_lru_get(cache, req, params, false);
     if (!result){
@@ -388,7 +387,6 @@ static void construction(void* c){
   params->regular_cache_miss = 0;
   // // destroy any previous hashtable
   if (params->hash_table_f != NULL){
-    DEBUG_ASSERT(params->hash_table_f->ptr_table != NULL);
     free_chained_hashtable_f_v2(params->hash_table_f);
     my_free(sizeof(cache_obj_t *) * hashsize(params->hash_table_f->hashpower),
           params->hash_table_f->ptr_table);

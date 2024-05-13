@@ -20,6 +20,8 @@
 
 // free of hashtable can be done during the construction phase instead of the deconstruction phase
 // merging two linkedlist can be done without doing it in background???
+// TODO: add one extra hashnext pointer to the hashtable so that they can achieve the shared object status
+// TODO: use shared objects instead of creating a copy
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,13 +48,13 @@ typedef struct {
   uint64_t regular_cache_access;
   
   
-  pthread_rwlock_t constructing; //will be activated when the cache is in de/construction
-
+  bool constucting;
+  bool called_construction; //this is to ensure that no more than one construction is called at a time
   bool is_frozen;
 
 } FH_params_t;
 
-static const char *DEFAULT_PARAMS = "split_point=0.8,miss_ratio_diff=0.01";
+static const char *DEFAULT_PARAMS = "split_point=0.2,miss_ratio_diff=0.01";
 // ***********************************************************************
 // ****                                                               ****
 // ****                   function declarations                       ****
@@ -64,13 +66,13 @@ static void FH_parse_params(cache_t *cache,
 static void FH_free(cache_t *cache);
 static bool FH_get(cache_t *cache, const request_t *req);
 static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *params);
-static bool FH_LRU_get(cache_t *cache, const request_t *req, FH_params_t *params);
 static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *params);
 static void deconstruction(cache_t *cache, FH_params_t *params);
-static void construction(cache_t *cache, FH_params_t *params);
+static void construction(void *cache);
 static void FH_remove_obj(cache_t *cache, cache_obj_t *obj);
+static bool FH_lru_get(cache_t *cache, const request_t *req, FH_params_t *params, const bool from_regular);
 static cache_obj_t *FH_lru_find(cache_t *cache, const request_t *req,
-                             const bool update_cache);
+                             const bool from_regular);
 static cache_obj_t *FH_lru_insert(cache_t *cache, const request_t *req);
 static cache_obj_t *FH_to_evict(cache_t *cache, const request_t *req);
 static void FH_lru_evict(cache_t *cache, const request_t *req);
@@ -116,7 +118,8 @@ cache_t *FH_init(const common_cache_params_t ccache_params,
   params->q_head = NULL;
   params->q_tail = NULL;
   params->hash_table_f = NULL;
-  pthread_rwlock_init(&params->constructing, NULL);
+  params->constucting = false;
+  params->called_construction = false;
   FH_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
     FH_parse_params(cache, cache_specific_params);
@@ -125,8 +128,6 @@ cache_t *FH_init(const common_cache_params_t ccache_params,
   if (params->split_obj == 0){
     INFO("split_object is 0 meaning it will be LRU\n");
   }
-
-
   return cache;
 }
 
@@ -141,20 +142,22 @@ cache_t *FH_init(const common_cache_params_t ccache_params,
  * @return true on hit, false on miss
  */
 static cache_obj_t* FH_lru_find(cache_t *cache, const request_t *req,
-                             const bool update_cache) {
+                             const bool from_regular) {
   pthread_spin_lock(&cache->lock);                           
   FH_params_t *params = (FH_params_t *)cache->eviction_params;
-  cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
+  cache_obj_t *cache_obj = cache_find_base(cache, req, true);
 
-  if (cache_obj && likely(update_cache)) {
-    if (params->is_frozen){
-      // only promote object in dlist
-      move_obj_to_head(&params->d_head, &params->d_tail, cache_obj);
-    }else{
+  if (cache_obj && likely(true)) {
+    if (!__atomic_load_n(&params->constucting, __ATOMIC_RELAXED)){
       // only promote object in qlist
-      move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
+      // DEBUG
+      if (params->is_frozen && from_regular){
+        pthread_spin_unlock(&cache->lock);
+        return cache_obj;
+      }
+      move_obj_to_head(&params->q_head, &params->q_tail, cache_obj); //bug source
     }
-  }
+  } 
   pthread_spin_unlock(&cache->lock);
   return cache_obj;
 }
@@ -170,32 +173,49 @@ static cache_obj_t* FH_lru_find(cache_t *cache, const request_t *req,
 static void FH_lru_evict(cache_t *cache, const request_t *req) {
   pthread_spin_lock(&cache->lock);
   FH_params_t *params = (FH_params_t *)cache->eviction_params;
+  if (__atomic_load_n(&params->constucting, __ATOMIC_RELAXED)){
+    pthread_spin_unlock(&cache->lock);
+    return;
+  }
   cache_obj_t *obj_to_evict = NULL;
-  if (params->is_frozen){
-    obj_to_evict = params->d_tail;
-    DEBUG_ASSERT(params->d_tail != NULL);
-    params->d_tail = params->d_tail->queue.prev;
-    if (likely(params->d_tail != NULL)) {
-      params->d_tail->queue.next = NULL;
-    } else {
-      /* cache->n_obj has not been updated */
-      DEBUG_ASSERT(cache->n_obj == 1);
-      params->d_head = NULL;
-    }
-  }else{
-    obj_to_evict = params->q_tail;
-    DEBUG_ASSERT(params->q_tail != NULL);
-    params->q_tail = params->q_tail->queue.prev;
-    if (likely(params->q_tail != NULL)) {
-      params->q_tail->queue.next = NULL;
-    } else {
-      /* cache->n_obj has not been updated */
-      DEBUG_ASSERT(cache->n_obj == 1);
-      params->q_head = NULL;
-    }
+  obj_to_evict = params->q_tail;
+  DEBUG_ASSERT(params->q_tail != NULL);
+  params->q_tail = params->q_tail->queue.prev;
+  if (likely(params->q_tail != NULL)) {
+    params->q_tail->queue.next = NULL;
+  } else {
+    /* cache->n_obj has not been updated */
+    DEBUG_ASSERT(cache->n_obj == 1);
+    params->q_head = NULL;
   }
   cache_evict_base(cache, obj_to_evict, true);
   pthread_spin_unlock(&cache->lock);
+}
+
+/**
+ * @brief insert an object into the cache,
+ * update the hash table and cache metadata
+ * this function assumes the cache has enough space
+ * and eviction is not part of this function
+ *
+ * @param cache
+ * @param req
+ * @return the inserted object
+ */
+static cache_obj_t *FH_lru_insert(cache_t *cache, const request_t *req) {
+  pthread_spin_lock(&cache->lock);
+  FH_params_t *params = (FH_params_t *)cache->eviction_params;
+  if (__atomic_load_n(&params->constucting, __ATOMIC_RELAXED)){
+    pthread_spin_unlock(&cache->lock);
+    return NULL;
+  }
+  cache_obj_t *obj = cache_insert_base(cache, req);
+  if (obj != NULL){
+    // TODO: might need to change later that to support insert during construction
+    prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+  }
+  pthread_spin_unlock(&cache->lock);
+  return obj;
 }
 
 /**
@@ -206,7 +226,6 @@ static void FH_lru_evict(cache_t *cache, const request_t *req) {
 static void FH_free(cache_t *cache) { 
   FH_params_t* params = (FH_params_t*)cache->eviction_params;
   // destroy the lock
-  pthread_rwlock_destroy(&params->constructing);
   if (params->hash_table_f != NULL){
     free_hashtable(params->hash_table_f);
   }
@@ -214,7 +233,7 @@ static void FH_free(cache_t *cache) {
   cache_struct_free(cache);
 }
 
-static bool FH_LRU_get(cache_t *cache, const request_t *req, FH_params_t *params){
+static bool FH_lru_get(cache_t *cache, const request_t *req, FH_params_t *params, const bool from_regular){
   cache_obj_t *obj = FH_lru_find(cache, req, true);
   bool hit = (obj != NULL);
   if (hit){
@@ -261,14 +280,11 @@ static bool FH_get(cache_t *cache, const request_t *req) {
   // we just first do very regular LRU cache
   FH_params_t *params = (FH_params_t *)cache->eviction_params;
   // other threads need to check whether the cache is currently in construction
-  pthread_rwlock_rdlock(&params->constructing);
-  if (params->is_frozen){
+  if (__atomic_load_n(&params->is_frozen, __ATOMIC_RELAXED)){
     // do the FH operations including possible deconstructions
-    pthread_rwlock_unlock(&params->constructing);
     return FH_Frozen_get(cache, req, params);
   }else{
     // do the regular cache operations including possible constructions
-    pthread_rwlock_unlock(&params->constructing);
     return FH_Regular_get(cache, req, params);
   }
   return false;
@@ -280,12 +296,13 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
   params->frozen_cache_access++;
   // this is read-only so we in fact do not add any lock on this hashtable
   //TODO: create a new function for hashtable that does not need a lock
-  cache_obj_t *obj = hashtable_find_obj_id(params->hash_table_f, req->obj_id);
+  cache_obj_t *obj = hashtable_f_find_obj_id(params->hash_table_f, req->obj_id);
   if (obj != NULL){
     return true;
   }else{
+    DEBUG_ASSERT(!contains_object(params->f_head, obj));
     // do regular LRU cache operations and change the related statistics
-    bool result = FH_LRU_get(cache, req, params);
+    bool result = FH_lru_get(cache, req, params, false);
     if (!result){
       params->frozen_cache_miss++;
     }else{
@@ -298,6 +315,7 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
   float cur_miss_ratio = ((float)params->frozen_cache_miss / (float)params->frozen_cache_access);
   if (cur_miss_ratio - params->regular_miss_ratio > params->miss_ratio_diff){
     // we need to reconstruct
+    // TODO: check deconstruction
     INFO("start deconstructing\n");
     deconstruction(cache, params);
   }
@@ -308,26 +326,31 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
   // we just first do very regular LRU cache
   bool res = false;
   params->regular_cache_access++;
-  res = FH_LRU_get(cache, req, params);
+  res = FH_lru_get(cache, req, params, true);
   if (!res && params->regular_cache_access > cache -> cache_size){
-    params->regular_cache_miss++;
+    __atomic_fetch_add(&params->regular_cache_miss, 1, __ATOMIC_RELAXED);
   }
 
   // check whether it is time for reconstruction
   // 1. the cache should be full
   // 2. the cache should already wait for 2 * cache_size accesses
   // pthread_rwlock_unlock(&params->constructing);
-  if (params->regular_cache_access >= 2 * cache->cache_size && cache->n_obj >= cache->cache_size){
-    // we need to re/construct
-    INFO("start re/constructing\n");
-    construction(cache, params);
+  if ((params->regular_cache_access >= 2 * cache->cache_size) && (cache->n_obj >= cache->cache_size)){
+    // do compare and set and if it is true then go on
+    bool flag = false;
+    bool flag2 = true;
+    if (__atomic_compare_exchange(&params->called_construction, &flag, &flag2, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
+      INFO("start constructing\n");
+      pthread_t construct_thread;
+      pthread_create(&construct_thread, NULL, (void *)construction, (void *)cache);
+      pthread_detach(construct_thread);
+    }
   }
 
   return res;
 }
 
 static void deconstruction(cache_t *cache, FH_params_t *params){
-  pthread_rwlock_wrlock(&params->constructing);
   // merge the two lists
   params->q_tail = params->d_tail;
   if (params->f_head != NULL){
@@ -338,63 +361,73 @@ static void deconstruction(cache_t *cache, FH_params_t *params){
     params->q_head = params->d_head;
   }
   // destroy the hash table, but cannot delete the objects
-  free_hashtable(params->hash_table_f);
   params->regular_cache_access = 0;
   params->regular_cache_miss = 0;
   params->regular_miss_ratio = 0;
 
   params->is_frozen = false;
-  pthread_rwlock_unlock(&params->constructing);
 }
 
-static void construction(cache_t *cache, FH_params_t *params){
-  // DEBUG_ASSERT(!contains_duplicates(params->q_head));
-  if (pthread_rwlock_trywrlock(&params->constructing)){
-    return;
-  } //TODO: remember the best is to add one if branch to prevent multiple reconstruction
-  // create a new hash table
-  // TODO: hashtable can be much smaller
+static void construction(void* c){
+  cache_t *cache = (cache_t *)c;
+  FH_params_t *params = (FH_params_t *)cache->eviction_params;
+  params->regular_miss_ratio = ((float)params->regular_cache_miss / (float)(params->regular_cache_access - cache->cache_size));
+  DEBUG_ASSERT(params->regular_miss_ratio >= 0);
+  params->regular_cache_access = 0;
+  params->regular_cache_miss = 0;
+  // // destroy any previous hashtable
+  if (params->hash_table_f != NULL){
+    my_free(sizeof(cache_obj_t *) * hashsize(params->hash_table_f->hashpower),
+          params->hash_table_f->ptr_table);
+    my_free(sizeof(hashtable_t), params->hash_table_f);
+  }
   params->hash_table_f = create_hashtable(10);
-  // split the list
+  // // split the list
   cache_obj_t *cur = params->q_head;
   int count = 0;
-  params->f_head = NULL;
-  // error, but not sure why.
-  //possible reason: the list contains duplicates
-  request_t* req = new_request();
-  while (count < params->split_obj){
+  
+  int miss_cur = params->regular_cache_miss; //keep track of current misses so that we know how many newly inserted is in the hash
+  printf("miss_cur is %d\n", miss_cur);
+  printf("regular_cache_miss is %lu\n", params->regular_cache_miss);
+  printf("split_obj is %d\n", params->split_obj);
+  while (count + params -> regular_cache_miss - miss_cur < params->split_obj){
     DEBUG_ASSERT(cur != NULL);
-    // insert the object into hashtable
-    copy_cache_obj_to_request(req, cur);
-    // hashtable_insert_obj(params->hash_table_f, cur);
-    hashtable_insert(params->hash_table_f, req);
-    // move cur
     cur = cur->queue.next;
     count++;
   }
-  free_request(req);
-  params->f_tail = cur->queue.prev;
-  if (params->f_tail != NULL){
-    params->f_head = params->q_head;
-    params->f_tail->queue.next = NULL;
+  printf("final count is %d\n", count);
+
+  bool TRUE = true;
+  bool FALSE = false;
+  __atomic_store(&params->constucting, &TRUE, __ATOMIC_RELAXED);
+
+  // at this point we know the split point but still need somehow a atomic system to make sure that it will not lead to racing
+  // WARNING: my current decision is that I will use q_head as new FC head and hope that in this way it will not lead to racing
+  // TODO: need to add extra hash pointer to support shared objects between two hashtables
+
+  // after decided which point, we serve the request but do not promote the object
+  for (cache_obj_t* tmp = params->q_head; tmp != cur; tmp = tmp->queue.next){
+    hashtable_insert_obj(params->hash_table_f, tmp);
   }
-  params->d_head = cur;
-  params->d_head->queue.prev = NULL;
-  params->d_tail = params->q_tail;
-  params->q_head = NULL;
-  params->q_tail = NULL;
+  params->f_head = params->q_head;
+  params->q_head = cur;
+  params->f_tail = cur->queue.prev;
+  params->f_tail->queue.next = NULL;
+  params->q_head->queue.prev = NULL;
+
+  
 
   //update stats after construction
   params->frozen_cache_access = 0;
   params->frozen_cache_miss = 0;
 
-  params->regular_miss_ratio = ((float)params->regular_cache_miss / (float)(params->regular_cache_access - cache->cache_size));
-  DEBUG_ASSERT(params->regular_miss_ratio >= 0);
-  params->is_frozen = true;
+ 
 
-  // DEBUG_ASSERT(is_doublyll_intact(params->f_head, params->f_tail));
-  // DEBUG_ASSERT(is_doublyll_intact(params->d_head, params->d_tail));
-  pthread_rwlock_unlock(&params->constructing);
+  __atomic_store(&params->is_frozen, &TRUE, __ATOMIC_RELAXED);
+  __atomic_store(&params->called_construction, &TRUE, __ATOMIC_RELAXED);
+  __atomic_store(&params->constucting, &FALSE, __ATOMIC_RELAXED);
+  DEBUG_ASSERT(params->f_head->queue.prev == NULL);
+  printf("construction is completed\n");
 }
 
 
@@ -405,33 +438,6 @@ static void construction(cache_t *cache, FH_params_t *params){
 // ****       developer facing APIs (used by cache developer)         ****
 // ****                                                               ****
 // ***********************************************************************
-
-/**
- * @brief insert an object into the cache,
- * update the hash table and cache metadata
- * this function assumes the cache has enough space
- * and eviction is not part of this function
- *
- * @param cache
- * @param req
- * @return the inserted object
- */
-static cache_obj_t *FH_lru_insert(cache_t *cache, const request_t *req) {
-  pthread_spin_lock(&cache->lock);
-  FH_params_t *params = (FH_params_t *)cache->eviction_params;
-  cache_obj_t *obj = cache_insert_base(cache, req);
-  if (obj != NULL){
-    if (params->is_frozen){
-      // insert the object into the hash table
-      // insert the object into the dlist
-      prepend_obj_to_head(&params->d_head, &params->d_tail, obj);
-    }else{
-      prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-    }
-  }
-  pthread_spin_unlock(&cache->lock);
-  return obj;
-}
 
 /**
  * @brief find the object to be evicted

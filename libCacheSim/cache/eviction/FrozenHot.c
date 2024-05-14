@@ -57,7 +57,7 @@ typedef struct {
 
 } FH_params_t;
 
-static const char *DEFAULT_PARAMS = "split_point=0.2,miss_ratio_diff=0.05";
+static const char *DEFAULT_PARAMS = "split_point=0.1,miss_ratio_diff=0.01";
 // ***********************************************************************
 // ****                                                               ****
 // ****                   function declarations                       ****
@@ -329,6 +329,8 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
     bool FALSE = true;
     if (__atomic_compare_exchange(&params->called_deconstruction, &TRUE, &FALSE, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
       INFO("start deconstructing\n");
+      printf("frozen_miss_ratio: %f\n", cur_miss_ratio);
+      printf("regular_miss_ratio: %f\n", params->regular_miss_ratio);
       params->called_deconstruction = true;
       deconstruction(cache, params);
     }

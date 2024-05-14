@@ -50,13 +50,14 @@ typedef struct {
   
   bool constucting;
   bool called_construction; //this is to ensure that no more than one construction is called at a time
+  bool called_deconstruction;
   bool is_frozen;
 
   int num_extra_thread;
 
 } FH_params_t;
 
-static const char *DEFAULT_PARAMS = "split_point=0.2,miss_ratio_diff=0.01";
+static const char *DEFAULT_PARAMS = "split_point=0.2,miss_ratio_diff=0.05";
 // ***********************************************************************
 // ****                                                               ****
 // ****                   function declarations                       ****
@@ -121,6 +122,8 @@ cache_t *FH_init(const common_cache_params_t ccache_params,
   params->q_tail = NULL;
   params->hash_table_f = NULL;
   params->constucting = false;
+  params->is_frozen = false;
+  params->called_deconstruction = false;
   params->called_construction = false;
   params->num_extra_thread = 0;
   FH_parse_params(cache, DEFAULT_PARAMS);
@@ -324,8 +327,9 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
     // TODO: check deconstruction
     bool TRUE = false;
     bool FALSE = true;
-    if (__atomic_compare_exchange(&params->called_construction, &TRUE, &FALSE, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
+    if (__atomic_compare_exchange(&params->called_deconstruction, &TRUE, &FALSE, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
       INFO("start deconstructing\n");
+      params->called_deconstruction = true;
       deconstruction(cache, params);
     }
   }
@@ -351,6 +355,7 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
     bool FALSE = true;
     if (__atomic_compare_exchange(&params->called_construction, &TRUE, &FALSE, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
       INFO("start constructing\n");
+      params->called_construction = true;
       pthread_t construct_thread;
       pthread_create(&construct_thread, NULL, (void *)construction, (void *)cache);
       pthread_detach(construct_thread);
@@ -374,6 +379,7 @@ static void deconstruction(cache_t *cache, FH_params_t *params){
   params->f_head = NULL;
 
   params->is_frozen = false;
+  // __atomic_store(&params->constucting, &FALSE, __ATOMIC_RELAXED);
   params->called_construction = false;
 }
 
@@ -436,11 +442,10 @@ static void construction(void* c){
  
 
   __atomic_store(&params->is_frozen, &TRUE, __ATOMIC_RELAXED);
-  __atomic_store(&params->called_construction, &FALSE, __ATOMIC_RELAXED);
-  __atomic_store(&params->constucting, &FALSE, __ATOMIC_RELAXED);
+  // __atomic_store(&params->called_construction, &FALSE, __ATOMIC_RELAXED);
   __atomic_fetch_sub(&params->num_extra_thread, 1, __ATOMIC_RELAXED);
   DEBUG_ASSERT(params->f_head->queue.prev == NULL);
-  printf("construction is completed\n");
+  params->called_deconstruction = false;
 }
 
 

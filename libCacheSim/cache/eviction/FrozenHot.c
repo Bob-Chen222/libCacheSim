@@ -12,17 +12,6 @@
 #include "../../dataStructure/hashtable/hashtable.h"
 #include "../../include/libCacheSim/evictionAlgo.h"
 
-// TODO: construction at the background
-// TODO: during construction, serving using regular LRU but do not promote
-// TODO: when construction is ready, set the flag and all the requests go to the frozen mode
-// TODO: when deciding the split point, also allow new objects to be insert at the front, freeze at approximate point
-// and then start the construciton using one extra thread
-
-// free of hashtable can be done during the construction phase instead of the deconstruction phase
-// merging two linkedlist can be done without doing it in background???
-// TODO: add one extra hashnext pointer to the hashtable so that they can achieve the shared object status
-// TODO: use shared objects instead of creating a copy
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -54,6 +43,10 @@ typedef struct {
   bool is_frozen;
 
   int num_extra_thread;
+
+  // profiling
+  uint64_t FC_cache_hit; //only keep track of the hit number of frozen cache during the frozen period
+  uint64_t DC_cache_hit; //only keep track of the hit number of dynamic cache during the frozen period
 
 } FH_params_t;
 
@@ -126,6 +119,8 @@ cache_t *FH_init(const common_cache_params_t ccache_params,
   params->called_deconstruction = false;
   params->called_construction = false;
   params->num_extra_thread = 0;
+  params->DC_cache_hit = 0;
+  params->FC_cache_hit = 0;
   FH_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
     FH_parse_params(cache, cache_specific_params);
@@ -234,7 +229,11 @@ static void FH_free(cache_t *cache) {
   // looping
   // while (params->num_extra_thread){
   // }
-  // destroy the lock
+  printf("FC hit is %lu\n", params->FC_cache_hit);
+  printf("DC hit is %lu\n", params->DC_cache_hit);
+  printf("Total miss is %lu\n", params->frozen_cache_miss);
+  printf("Total access is %lu\n", params->frozen_cache_access);
+  printf("Total miss ratio is %f\n", (float)params->frozen_cache_miss / (float)params->frozen_cache_access);
   if (params->hash_table_f != NULL){
     free_hashtable(params->hash_table_f);
   }
@@ -302,19 +301,21 @@ static bool FH_get(cache_t *cache, const request_t *req) {
 static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *params){
   // we first check whether the frozen hashtable has the requested entry
   // printf("frozen id: %d\n", req->obj_id);
-  
-  params->frozen_cache_access++;
+
+  __atomic_fetch_add(&params->frozen_cache_access, 1, __ATOMIC_RELAXED);
   // this is read-only so we in fact do not add any lock on this hashtable
   //TODO: create a new function for hashtable that does not need a lock
   cache_obj_t *obj = hashtable_f_find_obj_id(params->hash_table_f, req->obj_id);
   if (obj != NULL){
+    __atomic_fetch_add(&params->FC_cache_hit, 1, __ATOMIC_RELAXED);
     return true;
   }else{
     // do regular LRU cache operations and change the related statistics
     bool result = FH_lru_get(cache, req, params, false);
     if (!result){
-      params->frozen_cache_miss++;
+      __atomic_fetch_add(&params->frozen_cache_miss, 1, __ATOMIC_RELAXED);
     }else{
+      __atomic_fetch_add(&params->DC_cache_hit, 1, __ATOMIC_RELAXED);
       return true;
     }
   }
@@ -329,8 +330,6 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
     bool FALSE = true;
     if (__atomic_compare_exchange(&params->called_deconstruction, &TRUE, &FALSE, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
       INFO("start deconstructing\n");
-      printf("frozen_miss_ratio: %f\n", cur_miss_ratio);
-      printf("regular_miss_ratio: %f\n", params->regular_miss_ratio);
       params->called_deconstruction = true;
       deconstruction(cache, params);
     }
@@ -381,8 +380,15 @@ static void deconstruction(cache_t *cache, FH_params_t *params){
   params->f_head = NULL;
 
   params->is_frozen = false;
-  // __atomic_store(&params->constucting, &FALSE, __ATOMIC_RELAXED);
   params->called_construction = false;
+
+  printf("FC hit is %lu\n", params->FC_cache_hit);
+  printf("DC hit is %lu\n", params->DC_cache_hit);
+  printf("Total miss is %lu\n", params->frozen_cache_miss);
+  printf("Total access is %lu\n", params->frozen_cache_access);
+  printf("Total miss ratio is %f\n", (float)params->frozen_cache_miss / (float)params->frozen_cache_access);
+  params->FC_cache_hit = 0;
+  params->DC_cache_hit = 0;
 }
 
 static void construction(void* c){

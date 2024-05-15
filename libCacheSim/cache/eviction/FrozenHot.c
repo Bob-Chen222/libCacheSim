@@ -134,6 +134,9 @@ cache_t *FH_init(const common_cache_params_t ccache_params,
   if (params->split_obj == 0){
     INFO("split_object is 0 meaning it will be LRU\n");
   }
+
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "FH-%.4f-%.4f",
+             params->split_point, params->miss_ratio_diff);
   return cache;
 }
 
@@ -154,7 +157,7 @@ static cache_obj_t* FH_lru_find(cache_t *cache, const request_t *req,
   cache_obj_t *cache_obj = cache_find_base(cache, req, true);
 
   if (cache_obj && likely(true)) {
-    if (!__atomic_load_n(&params->constucting, __ATOMIC_RELAXED)){
+    if (!__atomic_load_n(&params->constucting, __ATOMIC_RELAXED) && from_regular){
       // only promote object in qlist
       if (params->is_frozen && from_regular){
         pthread_spin_unlock(&cache->lock);
@@ -267,7 +270,7 @@ static void FH_free(cache_t *cache) {
   printf("Total access is %lu\n", params->frozen_cache_access);
   printf("Total miss ratio is %f\n", (float)params->frozen_cache_miss / (float)params->frozen_cache_access);
   printf("Regular miss ratio is %f\n", params->regular_miss_ratio);
-  printf("cache n_obj: %d\n", cache->n_obj);
+  printf("cache n_obj: %lu\n", cache->n_obj);
   if (params->hash_table_f != NULL){
     free_hashtable(params->hash_table_f);
   }
@@ -379,7 +382,7 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
   // 1. the cache should be full
   // 2. the cache should already wait for 2 * cache_size accesses
   // pthread_rwlock_unlock(&params->constructing);
-  if ((params->regular_cache_access >= 2 * cache->cache_size) && (cache->n_obj >= cache->cache_size)){
+  if ((params->regular_cache_access >= 2 * cache->cache_size) && (cache->n_obj >= params->split_obj)){
     // if ((params->regular_cache_access == 10000)){
     // do compare and set and if it is true then go on
     bool TRUE = false;
@@ -411,11 +414,11 @@ static void deconstruction(cache_t *cache, FH_params_t *params){
     params->q_head->queue.prev = params->f_tail;
     params->q_head = params->f_head;
   }
-  uint64_t ca = 0;
-  __atomic_store(&params->regular_cache_access, &ca, __ATOMIC_RELAXED);
-  __atomic_store(&params->regular_cache_miss, &ca, __ATOMIC_RELAXED);
-  // params->regular_cache_access = 0;
-  // params->regular_cache_miss = 0;
+  // uint64_t ca = 0;
+  // __atomic_store(&params->regular_cache_access, &ca, __ATOMIC_RELAXED);
+  // __atomic_store(&params->regular_cache_miss, &ca, __ATOMIC_RELAXED);
+  params->regular_cache_access = 0;
+  params->regular_cache_miss = 0;
   params->regular_miss_ratio = 0;
   params->f_head = NULL;
 
@@ -496,8 +499,8 @@ static void construction(void* c){
   params->is_frozen = true;
   params->constucting = false;
   DEBUG_ASSERT(params->f_head->queue.prev == NULL);
-  printf("regular access is %lu\n", params->regular_cache_access);
   params->called_deconstruction = false;
+  printf("construction completed\n");
 }
 
 

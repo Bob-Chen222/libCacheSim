@@ -36,6 +36,7 @@ typedef struct {
   uint64_t default_ttl;
   int32_t hashpower;
   bool consider_obj_metadata;
+  int64_t num_thread;
 } common_cache_params_t;
 
 typedef cache_t *(*cache_init_func_ptr)(const common_cache_params_t,
@@ -126,6 +127,7 @@ struct cache {
   // use cache->get_occupied_byte to obtain the number of objects in the cache
   // do not use this variable directly
   int64_t occupied_byte;
+  int64_t thread_num;
   pthread_spinlock_t lock;
   uint64_t val_lock;
   bool warmup_complete;
@@ -374,6 +376,9 @@ bool dump_cached_obj_age(cache_t *cache, const request_t *req,
 void spin_lock(unsigned long* dummy);
 
 void spin_unlock(unsigned long* dummy);
+
+static void batch_add(uint64_t* local_counter, uint64_t* global_counter);
+static void batch_sub(uint64_t* local_counter, uint64_t* global_counter);
 
 #ifdef __cplusplus
 }

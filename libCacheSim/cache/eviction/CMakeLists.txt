@@ -36,6 +36,8 @@ set(sourceC
         lpFIFO_batch.c
         lpFIFO_shards.c
         lpLRU_prob.c
+        bp_wrapper.c
+        FrozenHot.c
 
         S3FIFO.c
         S3FIFOd.c

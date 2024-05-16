@@ -139,20 +139,13 @@ static cache_obj_t *FIFO_find(cache_t *cache, const request_t *req,
  * @return the inserted object
  */
 static cache_obj_t *FIFO_insert(cache_t *cache, const request_t *req) {
-  // printf("no fifo insert\n");
   cache_obj_t *obj = cache_insert_base(cache, req);
   if (obj != NULL){
     FIFO_params_t *params = (FIFO_params_t *)cache->eviction_params;
     if (!cache->warmup_complete){
       prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-      // DEBUG_ASSERT(doubly_linked_list_test(cache));
     }else{
-      // printf("num objects: %lu\n", cache->n_obj);
-      // pthread_spin_lock(&cache->lock);
       T_prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-      // DEBUG_ASSERT(surjection_test(cache));
-      // pthread_spin_unlock(&cache->lock);
-
     }
   }
 
@@ -190,7 +183,6 @@ static void FIFO_evict(cache_t *cache, const request_t *req) {
   cache_obj_t *obj_to_evict = T_evict_last_obj(&params->q_head, &params->q_tail);
   DEBUG_ASSERT(obj_to_evict != NULL);
 
-  // TODO: change to true
   cache_evict_base(cache, obj_to_evict, true);
 }
 

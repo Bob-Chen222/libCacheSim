@@ -42,6 +42,8 @@ extern "C" {
 #define hashtable_find(hashtable, req) chained_hashtable_find_v2(hashtable, req)
 #define hashtable_find_obj_id(hashtable, obj_id) \
   chained_hashtable_find_obj_id_v2(hashtable, obj_id)
+#define hashtable_f_find_obj_id(hashtable, obj_id) \
+  chained_hashtable_f_find_obj_id_v2(hashtable, obj_id)
 #define hashtable_find_obj(hashtable, cache_obj) \
   chained_hashtable_find_obj_v2(hashtable, cache_obj)
 #define hashtable_insert(hashtable, req) \
@@ -58,6 +60,8 @@ extern "C" {
 #define hashtable_foreach(hashtable, iter_func, user_data) \
   chained_hashtable_foreach_v2(hashtable, iter_func, user_data)
 #define free_hashtable(hashtable) free_chained_hashtable_v2(hashtable)
+#define free_hashtable_f(hashtable) free_chained_hashtable_f_v2(hashtable)
+#define verify_hashtable(hashtable, head) verify_objects_hashtable_v2(hashtable, head)
 #define hashtable_add_ptr_to_monitoring(hashtable, ptr)
 #define HASHTABLE_VER 2
 

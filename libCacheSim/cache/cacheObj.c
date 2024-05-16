@@ -134,6 +134,7 @@ void move_obj_to_tail(cache_obj_t **head, cache_obj_t **tail,
 void move_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
                       cache_obj_t *cache_obj) {
   DEBUG_ASSERT(head != NULL);
+  // DEBUG_ASSERT(contains_object(*head, cache_obj));
 
   if (tail != NULL && *head == *tail) {
     // the list only has one element
@@ -214,7 +215,19 @@ void T_prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
     cache_obj->queue.next = old_head;
   } while(!__atomic_compare_exchange_n(head, &old_head, cache_obj, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
   old_head->queue.prev = cache_obj;
-  // __atomic_store_n(old_head, cache_obj, __ATOMIC_RELAXED);
+
+  if (tail != NULL && *tail == NULL) {
+    // the list is empty
+    DEBUG_ASSERT(*head == NULL);
+    *tail = cache_obj;
+  }
+
+  if (*head != NULL) {
+    // the list has at least one element
+    (*head)->queue.prev = cache_obj;
+  }
+
+  *head = cache_obj;
 }
 
 /**
@@ -272,4 +285,67 @@ void print_list(cache_obj_t *head, cache_obj_t *tail) {
     printf("%ld->", p->obj_id);
     p = p->queue.next;
   }
+}
+
+bool contains_duplicates(cache_obj_t *head){
+  if (head == NULL || head->queue.next == NULL){
+    return true;
+  }
+  cache_obj_t *p = head;
+  cache_obj_t *q = head -> queue.next;
+
+  for (; p != NULL; p = p -> queue.next){
+    for (q = p -> queue.next; q != NULL; q = q -> queue.next){
+      if (p -> obj_id == q -> obj_id){
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool contains_object(cache_obj_t *head, cache_obj_t *obj){
+  cache_obj_t *p = head;
+  for (; p != NULL; p = p -> queue.next){
+    if (p == obj){
+      return true;
+    }
+  }
+  return false;
+}
+
+// bool is_loop(cache_obj_t *head, cache_obj_t *cur) {
+//   cache_obj_t *slow = head;
+//   cache_obj_t *fast = head;
+//   while (fast != NULL && fast->hash_f_next != NULL) {
+//     slow = slow->hash_f_next;
+//     fast = fast->hash_f_next->hash_f_next;
+//     if (slow == cur) {
+//       return true;
+//     }
+//   }
+//   return false;
+// }
+
+bool is_doublyll_intact(cache_obj_t *head, cache_obj_t *tail){
+  // check whether linked list is consistent
+  cache_obj_t *p = head;
+  cache_obj_t *q = tail;
+  while (p -> queue.next != NULL){
+    // check the link
+    if (p->queue.next->queue.prev != p){
+      return false;
+    }
+    p = p->queue.next;
+  }
+
+  while (q -> queue.prev != NULL){
+    // check the link
+    if (q->queue.prev->queue.next != q){
+      return false;
+    }
+    q = q->queue.prev;
+  }
+
+  return true;
 }

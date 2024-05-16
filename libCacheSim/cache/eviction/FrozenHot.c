@@ -53,7 +53,7 @@ typedef struct {
 
 } FH_params_t;
 
-static const char *DEFAULT_PARAMS = "split_point=0.9999,miss_ratio_diff=0.01";
+static const char *DEFAULT_PARAMS = "split_point=0.77,miss_ratio_diff=0.01";
 // ***********************************************************************
 // ****                                                               ****
 // ****                   function declarations                       ****
@@ -261,8 +261,8 @@ static void FH_free(cache_t *cache) {
   // printf("run time: %.2lf\n", runtime);
   // printf("frozen cache access is %lu\n", params->frozen_cache_access);
   // printf("frozen throughput is throughput %.2lf MQPS\n", (double)params->frozen_cache_access / 1000000 / runtime);
-  printf("FC hit is %lu\n", params->FC_cache_hit);
-  printf("DC hit is %lu\n", params->DC_cache_hit);
+  // printf("FC hit is %lu\n", params->FC_cache_hit);
+  // printf("DC hit is %lu\n", params->DC_cache_hit);
   printf("Total miss is %lu\n", params->frozen_cache_miss);
   printf("Total access is %lu\n", params->frozen_cache_access);
   printf("Total miss ratio is %f\n", (float)params->frozen_cache_miss / (float)params->frozen_cache_access);
@@ -379,7 +379,8 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
   // 1. the cache should be full
   // 2. the cache should already wait for 2 * cache_size accesses
   // pthread_rwlock_unlock(&params->constructing);
-  if ((params->regular_cache_access >= 2 * cache->cache_size) && (cache->n_obj >= cache->cache_size)){
+  // WARNING: each thread may conatins less than 100 objects and cannot contribute to the total
+  if ((params->regular_cache_access >= 2 * cache->cache_size) && (cache->n_obj >= params->split_obj)){
     // if ((params->regular_cache_access == 10000)){
     // do compare and set and if it is true then go on
     bool TRUE = false;
@@ -456,6 +457,9 @@ static void construction(void* c){
   bool TRUE = true;
   bool FALSE = false;
   __atomic_store(&params->constucting, &TRUE, __ATOMIC_RELAXED);
+
+  // WARNING: this variable is extremely vulnerable to batch_add because if the actual miss is not updated,
+  // it will go to far
   while (count + params -> regular_cache_miss - miss_cur < params->split_obj && cur -> queue.next){
     DEBUG_ASSERT(cur != NULL);
     // printf("count is %d\n", count);

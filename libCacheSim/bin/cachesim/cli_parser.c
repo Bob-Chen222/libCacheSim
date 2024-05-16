@@ -333,7 +333,7 @@ void parse_cmd(int argc, char *argv[], struct arguments *args) {
       int idx = i * args->n_cache_size + j;
       args->caches[idx] = create_cache(
           args->trace_path, args->eviction_algo[i], args->cache_sizes[j],
-          args->eviction_params, args->consider_obj_metadata);
+          args->eviction_params, args->consider_obj_metadata, args->n_thread);
 
       if (args->admission_algo != NULL) {
         args->caches[idx]->admissioner =

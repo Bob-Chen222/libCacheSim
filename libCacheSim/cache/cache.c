@@ -253,7 +253,12 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   if (cache_obj == NULL) {
     return NULL;
   }
+  // static __thread uint64_t local_nobj = 0;
+  // static __thread uint64_t local_occupied_byte = 0;
+  // batch_add(&local_nobj, &cache->n_obj);
+  // batch_add(&local_occupied_byte, &cache->occupied_byte);
   __atomic_fetch_add(&cache->n_obj, 1, __ATOMIC_RELAXED);
+  // // printf("cache n_obj: %ld\n", cache->n_obj);
   __atomic_fetch_add(&cache->occupied_byte, req->obj_size + cache->obj_md_size, __ATOMIC_RELAXED);
 
   return cache_obj;
@@ -283,11 +288,17 @@ void cache_evict_base(cache_t *cache, cache_obj_t *obj,
  */
 void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
                            bool remove_from_hashtable) {
+  // static __thread uint64_t local_nobj = 0;
+  // static __thread uint64_t local_occupied_byte = 0;
+  // batch_sub(&local_nobj, &cache->n_obj);
+  // batch_sub(&local_occupied_byte, &cache->occupied_byte);
   __atomic_fetch_sub(&cache->n_obj, 1, __ATOMIC_RELAXED);
-  __atomic_fetch_sub(&cache->occupied_byte, obj->obj_size + cache->obj_md_size, __ATOMIC_RELAXED);
+  __atomic_fetch_sub(&cache->occupied_byte, 1, __ATOMIC_RELAXED);
+  DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj) != NULL);
   if (remove_from_hashtable) {
    hashtable_delete(cache->hashtable, obj);
   }
+  DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj) == NULL);
 }
 
 /**
@@ -449,6 +460,22 @@ static uint64_t test_and_set(uint64_t *dummy) {
     uint64_t expected = UINT64_MAX;
     uint64_t new = UINT64_MAX - 1;
     return __atomic_compare_exchange(dummy, &expected, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+}
+
+static void batch_add(uint64_t* local_counter, uint64_t* global_counter){
+  *local_counter += 1;
+  if (*local_counter == 100){
+    __atomic_fetch_add(global_counter, 100, __ATOMIC_RELAXED);
+    *local_counter = 0;
+  }
+}
+
+static void batch_sub(uint64_t* local_counter, uint64_t* global_counter){
+  *local_counter += 1;
+  if (*local_counter == 100){
+    __atomic_fetch_sub(global_counter, 100, __ATOMIC_RELAXED);
+    *local_counter = 0;
+  }
 }
 
 void spin_lock(unsigned long* dummy) {

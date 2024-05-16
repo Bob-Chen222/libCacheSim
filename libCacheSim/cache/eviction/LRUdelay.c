@@ -154,9 +154,16 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
 
   LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
   cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
-  atomic_fetch_add(&params->vtime, 1);
+  // atomic_fetch_add(&params->vtime, 1);
+  static __thread uint64_t local_vtime = 0;
+  // __atomic_fetch_add(&params->vtime, 1, __ATOMIC_RELAXED);
+  local_vtime += 1;
+  if (local_vtime % 100 == 0){
+    __atomic_fetch_add(&params->vtime, 100, __ATOMIC_RELAXED);
+  }
   if (cache_obj && likely(update_cache) && params->vtime - cache_obj->delay_count.last_vtime > params->delay_time) {
     /* lru_head is the newest, move cur obj to lru_head */
+    printf("here\n");
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)
 #endif
@@ -186,6 +193,7 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
  * @return the inserted object
  */
 static cache_obj_t *LRU_delay_insert(cache_t *cache, const request_t *req) {
+  // usleep(1);
   pthread_spin_lock(&cache->lock);
   cache_obj_t *obj = cache_insert_base(cache, req);
   if (obj == NULL) {

@@ -111,6 +111,12 @@ cache_t *lpFIFO_shards_init(const common_cache_params_t ccache_params,
 cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
                            const char *cache_specific_params);
 
+cache_t *bp_wrapper_init(const common_cache_params_t ccache_params,
+                         const char *cache_specific_params);
+
+cache_t *FH_init(const common_cache_params_t ccache_params,
+                 const char *cache_specific_params);
+
 cache_t *lpLRU_prob_init(const common_cache_params_t ccache_params,
                   const char *cache_specific_params);
 

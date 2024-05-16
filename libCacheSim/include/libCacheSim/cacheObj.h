@@ -151,6 +151,7 @@ typedef struct {
 struct cache_obj;
 typedef struct cache_obj {
   struct cache_obj *hash_next;
+  struct cache_obj *hash_f_next; //used specifically for FrozenHot extra hashtable
   obj_id_t obj_id;
   uint32_t obj_size;
   pthread_mutex_t lock;
@@ -292,6 +293,15 @@ void T_prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
  */
 void append_obj_to_tail(cache_obj_t **head, cache_obj_t **tail,
                         cache_obj_t *cache_obj);
+
+bool is_doublyll_intact(cache_obj_t *head, cache_obj_t *tail);
+
+bool contains_duplicates(cache_obj_t *head);
+
+bool contains_object(cache_obj_t *head, cache_obj_t *obj);
+
+// bool is_loop(cache_obj_t *head, cache_obj_t *cur);
+
 /**
  * free cache_obj, this is only used when the cache_obj is explicitly
  * malloced
@@ -299,7 +309,8 @@ void append_obj_to_tail(cache_obj_t **head, cache_obj_t **tail,
  */
 static inline void free_cache_obj(cache_obj_t *cache_obj) {
   // destroy the lock
-  my_free(sizeof(cache_obj_t), cache_obj);
+  //TODO: get it back
+  // my_free(sizeof(cache_obj_t), cache_obj);
 }
 
 #ifdef __cplusplus

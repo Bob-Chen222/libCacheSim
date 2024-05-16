@@ -16,12 +16,14 @@ static inline cache_t *create_cache(const char *trace_path,
                                     const char *eviction_algo,
                                     const uint64_t cache_size,
                                     const char *eviction_params,
-                                    const bool consider_obj_metadata) {
+                                    const bool consider_obj_metadata,
+                                    const int64_t num_thread) {
   common_cache_params_t cc_params = {
       .cache_size = cache_size,
       .default_ttl = 86400 * 300,
       .hashpower = 24,
       .consider_obj_metadata = consider_obj_metadata,
+      .num_thread = num_thread,
   };
   cache_t *cache;
 
@@ -117,6 +119,10 @@ static inline cache_t *create_cache(const char *trace_path,
     cache = SFIFO_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "sfifov0") == 0) {
     cache = SFIFOv0_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "fh") == 0){
+    cache = FH_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "bp") == 0) {
+    cache = bp_wrapper_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lru-prob") == 0) {
     cache = LRU_Prob_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lru-delay") == 0) {

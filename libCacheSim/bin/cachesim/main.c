@@ -25,7 +25,6 @@ int main(int argc, char **argv) {
     parallel_simulate(args.reader, args.caches[0], args.report_interval,
                       args.ofilepath, args.n_thread);
     free_arg(&args);
-    // printf("free!\n");
     return 0;
   }
 

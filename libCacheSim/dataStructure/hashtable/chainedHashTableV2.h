@@ -18,6 +18,9 @@ extern "C" {
 
 hashtable_t *create_chained_hashtable_v2(const uint16_t hashpower_init);
 
+cache_obj_t *chained_hashtable_f_find_obj_id_v2(const hashtable_t *hashtable,
+                                              const obj_id_t obj_id);
+
 cache_obj_t *chained_hashtable_find_obj_id_v2(const hashtable_t *hashtable,
                                               const obj_id_t obj_id);
 
@@ -47,10 +50,18 @@ void chained_hashtable_foreach_v2(hashtable_t *hashtable,
 
 void free_chained_hashtable_v2(hashtable_t *hashtable);
 
+void free_chained_hashtable_f_v2(hashtable_t *hashtable);
+
+void verify_objects_hashtable_v2(hashtable_t *hashtable, cache_obj_t *head);
+
 void check_hashtable_integrity_v2(const hashtable_t *hashtable);
 
 void check_hashtable_integrity2_v2(const hashtable_t *hashtable,
                                    const cache_obj_t *head);
+
+bool is_loop(cache_obj_t *head, cache_obj_t *cur);
+
+bool is_loop_bp(cache_obj_t *head, cache_obj_t *cur);
 
 #ifdef __cplusplus
 }

@@ -25,11 +25,11 @@ typedef struct {
   cache_obj_t *q_tail;
   uint64_t batch_size; // determines how often promotion is performed
   uint64_t queue_size;
-  cache_obj_t ***buffers; //buffers for each thread
+  cache_obj_t **buffers; //buffers for each thread
   uint64_t num_thread;
 } bp_wrapper_params_t;
 
-static const char *DEFAULT_PARAMS = "batch-size=32,queue-size=32";
+static const char *DEFAULT_PARAMS = "batch-size=32,queue-size=64";
 
 // ***********************************************************************
 // ****                                                               ****
@@ -100,11 +100,11 @@ cache_t *bp_wrapper_init(const common_cache_params_t ccache_params,
   }
 
   // allocate buffer
-  params->buffers = malloc(sizeof(cache_obj_t **) * params->num_thread);
+  // params->buffers = malloc(sizeof(cache_obj_t **) * params->num_thread);
 
-  for (int i = 0; i < params->num_thread; i++) {
-    params->buffers[i] = malloc(sizeof(cache_obj_t *) * params->queue_size);
-  }
+  // for (int i = 0; i < params->num_thread; i++) {
+  //   params->buffers[i] = malloc(sizeof(cache_obj_t *) * params->queue_size);
+  // }
 
 
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "bp_wrapper-%ld",
@@ -147,6 +147,7 @@ static void bp_wrapper_free(cache_t *cache) {
 static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
   bp_wrapper_params_t *params = (bp_wrapper_params_t *)cache->eviction_params;
 
+  // pthread_spin_lock(&cache->lock);
 
   static __thread int pos = 0;
   static __thread cache_obj_t **buff = NULL;
@@ -167,25 +168,31 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
     allocated = true;
   }
 
+  // pthread_spin_lock(&cache->lock);
   cache_obj_t *obj = cache_find_base(cache, req, true);
-  if (obj != NULL) {
-    //hit scheme
+  // if (false){
+  if (obj != NULL) { // hit
+    // pthread_spin_lock(&cache->lock);
+    assert(obj->queue.prev || obj -> queue.next);
     buff[pos] = obj;
     pos += 1;
     
-    if (pos >= queue_size) {
+    if (pos >= batch_size) {
       //pseudocode
-      trylock_outcome = pthread_spin_trylock(&cache->lock);
+      // trylock_outcome = pthread_spin_trylock(&cache->lock);
     }else{
       // there are still fewer objects than batch-size so we just stop here
+      // pthread_spin_unlock(&cache->lock);
       return true;
     }
     //0 succeeds 1 fails
     if (trylock_outcome){
       if (pos < queue_size){
+        DEBUG_ASSERT(false);
+        // pthread_spin_unlock(&cache->lock);
         return true;
       }else{
-        pthread_spin_lock(&cache->lock);
+        // pthread_spin_lock(&cache->lock);
       }
     }
 
@@ -196,14 +203,24 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
     for (int i = 0; i < pos; i++) {
       cache_obj_t *obj = buff[i];
       // promote it to the head of the queue
-      // for now I assume that it will always be in the cache
-      DEBUG_ASSERT(hashtable_find_obj_id(cache->hashtable, obj->obj_id) != NULL);
-      // print_list(params->q_head);
-      move_obj_to_head(&params->q_head, &params->q_tail, obj);
+      // for now I assume that it is in the cache
+      DEBUG_ASSERT(!is_loop_bp(params->q_head, params->q_tail));
+      if (hashtable_find_obj(cache->hashtable, obj)){
+        DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj));
+        if (!contains_object(params->q_head, obj)){
+          printf("thread %d not found: %d\n", req->thread_id, obj->obj_id);
+        }
+        DEBUG_ASSERT(contains_object(params->q_head, obj));
+        // printf("moved to head1: %d\n", obj->obj_id);
+        move_obj_to_head(&params->q_head, &params->q_tail, obj);
+        // printf("211\n");
+        // verify_hashtable(cache->hashtable, params->q_head);
+        DEBUG_ASSERT(params->q_head == obj);
+      }
     }
 
-    // do unlock!!
-    pthread_spin_unlock(&cache->lock);
+    // unlock!!
+    // pthread_spin_unlock(&cache->lock);
     pos = 0;
     trylock_outcome = false;
     return true;
@@ -212,28 +229,54 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
     for (int i = 0; i < pos; i++) {
       __builtin_prefetch(&buff[i]);
     }
-    //do the lock
-    pthread_spin_lock(&cache->lock);
+    // lock
+    // pthread_spin_lock(&cache->lock);
     for (int i = 0; i < pos; i++) {
       cache_obj_t *obj = buff[i];
       // promote it to the head of the queue
       // for now I assume that it will always be in the cache
-      DEBUG_ASSERT(hashtable_find_obj_id(cache->hashtable, obj->obj_id) != NULL);
-      move_obj_to_head(&params->q_head, &params->q_tail, obj);
+      DEBUG_ASSERT(!is_loop_bp(params->q_head, params->q_tail));
+      // DEBUG_ASSERT(hashtable_find(cache->hashtable, obj));
+      if (hashtable_find_obj(cache->hashtable, obj)){
+        DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj));
+        if (!contains_object(params->q_head, obj)){
+          for (int j = 0; j < 10000; j++) {
+            printf("thread %d not found: %d\n", req->thread_id, obj->obj_id);
+          }
+          // printf("not found: %d\n", obj->obj_id);
+        }
+        // printf("moved to head2: %d\n", obj->obj_id);
+        // DEBUG_ASSERT(contains_object(params->q_head, obj));
+        move_obj_to_head(&params->q_head, &params->q_tail, obj);
+        // printf("239\n");
+        // verify_hashtable(cache->hashtable, params->q_head);
+        DEBUG_ASSERT(params->q_head == obj);
+      }
     }
     // since this is a miss, we evict one object and add one object to the cache
     //evict
     if (cache->get_occupied_byte(cache) + req->obj_size +
                cache->obj_md_size >
            cache->cache_size) {
+      DEBUG_ASSERT(cache->obj_md_size == 0);
+      cache_obj_t *obj_to_evict = params->q_tail;
+      DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj_to_evict));
       bp_wrapper_evict(cache, req);
+      printf("thread %d evicted %d\n", req->thread_id, obj_to_evict->obj_id);
+      // verify_hashtable(cache->hashtable, params->q_head);
+      DEBUG_ASSERT(!hashtable_find_obj(cache->hashtable, obj_to_evict));
+      DEBUG_ASSERT(!contains_object(params->q_head, obj_to_evict));
     }
 
     // it is possible that the insertion failed as it is possible that both threads go to the miss scheme
     bp_wrapper_insert(cache, req);
-    // do the unlock
-    pthread_spin_unlock(&cache->lock);
+    // printf("inserted %d\n", req->obj_id);
+    // verify_hashtable(cache->hashtable, params->q_head);
+
+
+    // unlock
     pos = 0;
+    // pthread_spin_unlock(&cache->lock);
     return false;
   }
 }

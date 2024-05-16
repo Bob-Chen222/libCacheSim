@@ -361,7 +361,6 @@ static const char *lpFIFO_batch_current_params(cache_t *cache,
 
 static void lpFIFO_batch_parse_params(cache_t *cache,
                                const char *cache_specific_params) {
-  printf("cache_specific: %s\n", cache_specific_params);
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
   char *params_str = strdup(cache_specific_params);
   char *old_params_str = params_str;

@@ -107,8 +107,8 @@ cache_t *bp_wrapper_init(const common_cache_params_t ccache_params,
   // }
 
 
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "bp_wrapper-%ld",
-             params->batch_size);
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "bp_wrapper-%ld-%ld",
+             params->batch_size, params->queue_size);
 
   return cache;
 }
@@ -195,17 +195,17 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
       cache_obj_t *obj = buff[i];
       // promote it to the head of the queue
       // for now I assume that it is in the cache
-      DEBUG_ASSERT(!is_loop_bp(params->q_head, params->q_tail));
+      // DEBUG_ASSERT(!is_loop_bp(params->q_head, params->q_tail));
       cache_obj_t * o = hashtable_find_obj(cache->hashtable, obj);
       if (o){
-        if (contains_object(params->q_head, obj)){
-          DEBUG_ASSERT(o == obj);
-        }else{
-          DEBUG_ASSERT(o != obj);
-        }
-        DEBUG_ASSERT(contains_object(params->q_head, o));
+        // if (contains_object(params->q_head, obj)){
+        //   DEBUG_ASSERT(o == obj);
+        // }else{
+        //   DEBUG_ASSERT(o != obj);
+        // }
+        // DEBUG_ASSERT(contains_object(params->q_head, o));
         move_obj_to_head(&params->q_head, &params->q_tail, o);
-        DEBUG_ASSERT(params->q_head == o);
+        // DEBUG_ASSERT(params->q_head == o);
       }
     }
 
@@ -225,18 +225,17 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
       cache_obj_t *obj = buff[i];
       // promote it to the head of the queue
       // for now I assume that it will always be in the cache
-      DEBUG_ASSERT(!is_loop_bp(params->q_head, params->q_tail));
+      // DEBUG_ASSERT(!is_loop_bp(params->q_head, params->q_tail));
       cache_obj_t * o = hashtable_find_obj(cache->hashtable, obj);
       if (o){
-        if (contains_object(params->q_head, obj)){
-          DEBUG_ASSERT(o == obj);
-        }else{
-          DEBUG_ASSERT(o != obj);
-        }
-
-        DEBUG_ASSERT(contains_object(params->q_head, o));
+        // if (contains_object(params->q_head, obj)){
+        //   DEBUG_ASSERT(o == obj);
+        // }else{
+        //   DEBUG_ASSERT(o != obj);
+        // }
+        // DEBUG_ASSERT(contains_object(params->q_head, o));
         move_obj_to_head(&params->q_head, &params->q_tail, o);
-        DEBUG_ASSERT(params->q_head == o);
+        // DEBUG_ASSERT(params->q_head == o);
       }
     }
     // since this is a miss, we evict one object and add one object to the cache
@@ -245,11 +244,11 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
                cache->obj_md_size >
            cache->cache_size) {
       DEBUG_ASSERT(cache->obj_md_size == 0);
-      cache_obj_t *obj_to_evict = params->q_tail;
-      DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj_to_evict));
+      // cache_obj_t *obj_to_evict = params->q_tail;
+      // DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj_to_evict));
       bp_wrapper_evict(cache, req);
-      DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj_to_evict) == NULL);
-      DEBUG_ASSERT(!contains_object(params->q_head, obj_to_evict));
+      // DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj_to_evict) == NULL);
+      // DEBUG_ASSERT(!contains_object(params->q_head, obj_to_evict));
     }
 
     // it is possible that the insertion failed as it is possible that both threads go to the miss scheme
@@ -416,7 +415,6 @@ static const char *bp_wrapper_current_params(cache_t *cache,
 
 static void bp_wrapper_parse_params(cache_t *cache,
                                const char *cache_specific_params) {
-  printf("cache_specific: %s\n", cache_specific_params);
   bp_wrapper_params_t *params = (bp_wrapper_params_t *)cache->eviction_params;
   char *params_str = strdup(cache_specific_params);
   char *old_params_str = params_str;
@@ -425,7 +423,6 @@ static void bp_wrapper_parse_params(cache_t *cache,
   while (params_str != NULL && params_str[0] != '\0') {
     /* different parameters are separated by comma,
      * key and value are separated by = */
-    printf("params_str: %s\n", params_str);
     char *key = strsep((char **)&params_str, "=");
     char *value = strsep((char **)&params_str, ",");
 

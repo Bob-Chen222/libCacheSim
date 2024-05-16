@@ -163,7 +163,6 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
   }
   if (cache_obj && likely(update_cache) && params->vtime - cache_obj->delay_count.last_vtime > params->delay_time) {
     /* lru_head is the newest, move cur obj to lru_head */
-    printf("here\n");
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)
 #endif

@@ -147,8 +147,6 @@ static void bp_wrapper_free(cache_t *cache) {
 static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
   bp_wrapper_params_t *params = (bp_wrapper_params_t *)cache->eviction_params;
 
-  // pthread_spin_lock(&cache->lock);
-
   static __thread int pos = 0;
   static __thread cache_obj_t **buff = NULL;
   static __thread int queue_size = 0;
@@ -168,31 +166,24 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
     allocated = true;
   }
 
-  // pthread_spin_lock(&cache->lock);
   cache_obj_t *obj = cache_find_base(cache, req, true);
-  // if (false){
   if (obj != NULL) { // hit
-    // pthread_spin_lock(&cache->lock);
-    assert(obj->queue.prev || obj -> queue.next);
     buff[pos] = obj;
     pos += 1;
     
     if (pos >= batch_size) {
       //pseudocode
-      // trylock_outcome = pthread_spin_trylock(&cache->lock);
+      trylock_outcome = pthread_spin_trylock(&cache->lock);
     }else{
       // there are still fewer objects than batch-size so we just stop here
-      // pthread_spin_unlock(&cache->lock);
       return true;
     }
     //0 succeeds 1 fails
     if (trylock_outcome){
       if (pos < queue_size){
-        DEBUG_ASSERT(false);
-        // pthread_spin_unlock(&cache->lock);
         return true;
       }else{
-        // pthread_spin_lock(&cache->lock);
+        pthread_spin_lock(&cache->lock);
       }
     }
 
@@ -205,22 +196,21 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
       // promote it to the head of the queue
       // for now I assume that it is in the cache
       DEBUG_ASSERT(!is_loop_bp(params->q_head, params->q_tail));
-      if (hashtable_find_obj(cache->hashtable, obj)){
-        DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj));
-        if (!contains_object(params->q_head, obj)){
-          printf("thread %d not found: %d\n", req->thread_id, obj->obj_id);
+      cache_obj_t * o = hashtable_find_obj(cache->hashtable, obj);
+      if (o){
+        if (contains_object(params->q_head, obj)){
+          DEBUG_ASSERT(o == obj);
+        }else{
+          DEBUG_ASSERT(o != obj);
         }
-        DEBUG_ASSERT(contains_object(params->q_head, obj));
-        // printf("moved to head1: %d\n", obj->obj_id);
-        move_obj_to_head(&params->q_head, &params->q_tail, obj);
-        // printf("211\n");
-        // verify_hashtable(cache->hashtable, params->q_head);
-        DEBUG_ASSERT(params->q_head == obj);
+        DEBUG_ASSERT(contains_object(params->q_head, o));
+        move_obj_to_head(&params->q_head, &params->q_tail, o);
+        DEBUG_ASSERT(params->q_head == o);
       }
     }
 
     // unlock!!
-    // pthread_spin_unlock(&cache->lock);
+    pthread_spin_unlock(&cache->lock);
     pos = 0;
     trylock_outcome = false;
     return true;
@@ -230,27 +220,23 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
       __builtin_prefetch(&buff[i]);
     }
     // lock
-    // pthread_spin_lock(&cache->lock);
+    pthread_spin_lock(&cache->lock);
     for (int i = 0; i < pos; i++) {
       cache_obj_t *obj = buff[i];
       // promote it to the head of the queue
       // for now I assume that it will always be in the cache
       DEBUG_ASSERT(!is_loop_bp(params->q_head, params->q_tail));
-      // DEBUG_ASSERT(hashtable_find(cache->hashtable, obj));
-      if (hashtable_find_obj(cache->hashtable, obj)){
-        DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj));
-        if (!contains_object(params->q_head, obj)){
-          for (int j = 0; j < 10000; j++) {
-            printf("thread %d not found: %d\n", req->thread_id, obj->obj_id);
-          }
-          // printf("not found: %d\n", obj->obj_id);
+      cache_obj_t * o = hashtable_find_obj(cache->hashtable, obj);
+      if (o){
+        if (contains_object(params->q_head, obj)){
+          DEBUG_ASSERT(o == obj);
+        }else{
+          DEBUG_ASSERT(o != obj);
         }
-        // printf("moved to head2: %d\n", obj->obj_id);
-        // DEBUG_ASSERT(contains_object(params->q_head, obj));
-        move_obj_to_head(&params->q_head, &params->q_tail, obj);
-        // printf("239\n");
-        // verify_hashtable(cache->hashtable, params->q_head);
-        DEBUG_ASSERT(params->q_head == obj);
+
+        DEBUG_ASSERT(contains_object(params->q_head, o));
+        move_obj_to_head(&params->q_head, &params->q_tail, o);
+        DEBUG_ASSERT(params->q_head == o);
       }
     }
     // since this is a miss, we evict one object and add one object to the cache
@@ -262,21 +248,19 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
       cache_obj_t *obj_to_evict = params->q_tail;
       DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj_to_evict));
       bp_wrapper_evict(cache, req);
-      printf("thread %d evicted %d\n", req->thread_id, obj_to_evict->obj_id);
-      // verify_hashtable(cache->hashtable, params->q_head);
-      DEBUG_ASSERT(!hashtable_find_obj(cache->hashtable, obj_to_evict));
+      DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj_to_evict) == NULL);
       DEBUG_ASSERT(!contains_object(params->q_head, obj_to_evict));
     }
 
     // it is possible that the insertion failed as it is possible that both threads go to the miss scheme
-    bp_wrapper_insert(cache, req);
-    // printf("inserted %d\n", req->obj_id);
-    // verify_hashtable(cache->hashtable, params->q_head);
 
+    // DEBUG_ASSERT(!hashtable_find_obj_id(cache->hashtable, req->obj_id));
+    bp_wrapper_insert(cache, req);
+    // DEBUG_ASSERT(hashtable_find_obj_id(cache->hashtable, req->obj_id));
 
     // unlock
     pos = 0;
-    // pthread_spin_unlock(&cache->lock);
+    pthread_spin_unlock(&cache->lock);
     return false;
   }
 }

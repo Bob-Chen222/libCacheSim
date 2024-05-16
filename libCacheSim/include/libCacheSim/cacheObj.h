@@ -310,7 +310,7 @@ bool contains_object(cache_obj_t *head, cache_obj_t *obj);
 static inline void free_cache_obj(cache_obj_t *cache_obj) {
   // destroy the lock
   //TODO: get it back
-  // my_free(sizeof(cache_obj_t), cache_obj);
+  my_free(sizeof(cache_obj_t), cache_obj);
 }
 
 #ifdef __cplusplus

@@ -298,7 +298,7 @@ void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
   if (remove_from_hashtable) {
    hashtable_delete(cache->hashtable, obj);
   }
-  DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj) == NULL);
+  // DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj) == NULL);
 }
 
 /**

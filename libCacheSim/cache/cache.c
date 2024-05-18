@@ -456,11 +456,27 @@ bool dump_cached_obj_age(cache_t *cache, const request_t *req,
   return true;
 }
 
+static uint64_t test_and_test_and_set(uint64_t *dummy) {
+    uint64_t expected = UINT64_MAX;
+    uint64_t new = UINT64_MAX - 1;
+
+    // First test: Check the current value of *dummy without modifying it.
+    if (__atomic_load_n(dummy, __ATOMIC_RELAXED) == expected) {
+        // Second test and set: Only attempt to set if the first test passes.
+        if (__atomic_compare_exchange_n(dummy, &expected, new, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+            return 1; // Return 1 to indicate that the exchange was successful.
+        }
+    }
+    return 0; // Return 0 to indicate that the value was not set because it does not match the expected value.
+}
+
 static uint64_t test_and_set(uint64_t *dummy) {
     uint64_t expected = UINT64_MAX;
     uint64_t new = UINT64_MAX - 1;
     return __atomic_compare_exchange(dummy, &expected, &new, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
 }
+
+
 
 static void batch_add(uint64_t* local_counter, uint64_t* global_counter){
   *local_counter += 1;
@@ -479,7 +495,7 @@ static void batch_sub(uint64_t* local_counter, uint64_t* global_counter){
 }
 
 void spin_lock(unsigned long* dummy) {
-    while (!test_and_set(dummy)) {
+    while (!test_and_test_and_set(dummy)) {
         // Busy wait if the lock is taken
         while (__atomic_load_n(dummy, __ATOMIC_RELAXED) == UINT64_MAX - 1) {
             // Lock is busy, just wait

@@ -53,7 +53,7 @@ typedef struct {
 
 } FH_params_t;
 
-static const char *DEFAULT_PARAMS = "split_point=0.77,miss_ratio_diff=0.01";
+static const char *DEFAULT_PARAMS = "split-point=0.77,miss-diff=0.01";
 // ***********************************************************************
 // ****                                                               ****
 // ****                   function declarations                       ****
@@ -134,6 +134,9 @@ cache_t *FH_init(const common_cache_params_t ccache_params,
   if (params->split_obj == 0){
     INFO("split_object is 0 meaning it will be LRU\n");
   }
+
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "FH-%f-%f",
+           params->split_point, params->miss_ratio_diff);
   return cache;
 }
 
@@ -263,11 +266,11 @@ static void FH_free(cache_t *cache) {
   // printf("frozen throughput is throughput %.2lf MQPS\n", (double)params->frozen_cache_access / 1000000 / runtime);
   // printf("FC hit is %lu\n", params->FC_cache_hit);
   // printf("DC hit is %lu\n", params->DC_cache_hit);
-  printf("Total miss is %lu\n", params->frozen_cache_miss);
-  printf("Total access is %lu\n", params->frozen_cache_access);
-  printf("Total miss ratio is %f\n", (float)params->frozen_cache_miss / (float)params->frozen_cache_access);
-  printf("Regular miss ratio is %f\n", params->regular_miss_ratio);
-  printf("cache n_obj: %d\n", cache->n_obj);
+  // printf("Total miss is %lu\n", params->frozen_cache_miss);
+  // printf("Total access is %lu\n", params->frozen_cache_access);
+  // printf("Total miss ratio is %f\n", (float)params->frozen_cache_miss / (float)params->frozen_cache_access);
+  // printf("Regular miss ratio is %f\n", params->regular_miss_ratio);
+  // printf("cache n_obj: %d\n", cache->n_obj);
   if (params->hash_table_f != NULL){
     free_hashtable(params->hash_table_f);
   }
@@ -352,7 +355,7 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
     bool TRUE = false;
     bool FALSE = true;
     if (__atomic_compare_exchange(&params->called_deconstruction, &TRUE, &FALSE, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
-      INFO("start deconstructing\n");
+      // INFO("start deconstructing\n");
       params->called_deconstruction = true;
       deconstruction(cache, params);
     }
@@ -386,8 +389,8 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
     bool TRUE = false;
     bool FALSE = true;
     if (__atomic_compare_exchange(&params->called_construction, &TRUE, &FALSE, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
-      INFO("start constructing\n");
-      printf("params->regular_access is %lu\n", params->regular_cache_access);
+      // INFO("start constructing\n");
+      // printf("params->regular_access is %lu\n", params->regular_cache_access);
       params->called_construction = true;
       pthread_t construct_thread;
       pthread_create(&construct_thread, NULL, (void *)construction, (void *)cache);
@@ -500,7 +503,7 @@ static void construction(void* c){
   params->is_frozen = true;
   params->constucting = false;
   DEBUG_ASSERT(params->f_head->queue.prev == NULL);
-  printf("regular access is %lu\n", params->regular_cache_access);
+  // printf("regular access is %lu\n", params->regular_cache_access);
   params->called_deconstruction = false;
 }
 
@@ -606,7 +609,7 @@ static void FH_print_cache(const cache_t *cache) {
 
 static void FH_parse_params(cache_t *cache,
                                const char *cache_specific_params) {
-  printf("cache_specific: %s\n", cache_specific_params);
+  // printf("cache_specific: %s\n", cache_specific_params);
   FH_params_t *params = (FH_params_t *)cache->eviction_params;
   char *params_str = strdup(cache_specific_params);
   char *old_params_str = params_str;
@@ -615,7 +618,7 @@ static void FH_parse_params(cache_t *cache,
   while (params_str != NULL && params_str[0] != '\0') {
     /* different parameters are separated by comma,
      * key and value are separated by = */
-    printf("params_str: %s\n", params_str);
+    // printf("params_str: %s\n", params_str);
     char *key = strsep((char **)&params_str, "=");
     char *value = strsep((char **)&params_str, ",");
 
@@ -624,7 +627,7 @@ static void FH_parse_params(cache_t *cache,
       params_str++;
     }
 
-    if (strcasecmp(key, "split_point") == 0) {
+    if (strcasecmp(key, "split-point") == 0) {
       if (strchr(value, '.') != NULL) {
         // input is a float
         params->split_point = strtof(value, &end);
@@ -632,7 +635,7 @@ static void FH_parse_params(cache_t *cache,
       else {
         DEBUG_ASSERT("only support float\n");
       }
-    } else if (strcasecmp(key, "miss_ratio_diff") == 0) {
+    } else if (strcasecmp(key, "miss-diff") == 0) {
       if (strchr(value, '.') != NULL) {
         // input is a float
         params->miss_ratio_diff = strtof(value, &end);

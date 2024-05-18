@@ -136,13 +136,13 @@ void move_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
   DEBUG_ASSERT(head != NULL);
   // DEBUG_ASSERT(contains_object(*head, cache_obj));
 
-  if (tail != NULL && *head == *tail) {
-    // the list only has one element
-    DEBUG_ASSERT(cache_obj == *head);
-    DEBUG_ASSERT(cache_obj->queue.next == NULL);
-    DEBUG_ASSERT(cache_obj->queue.prev == NULL);
-    return;
-  }
+  // if (tail != NULL && *head == *tail) {
+  //   // the list only has one element
+  //   DEBUG_ASSERT(cache_obj == *head);
+  //   DEBUG_ASSERT(cache_obj->queue.next == NULL);
+  //   DEBUG_ASSERT(cache_obj->queue.prev == NULL);
+  //   return;
+  // }
 
   if (cache_obj == *head) {
     // already at head

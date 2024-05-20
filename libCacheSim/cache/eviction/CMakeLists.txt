@@ -45,6 +45,8 @@ set(sourceC
 
         Sieve.c
 
+        FrozenHot.c
+
 )
 
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/priv")

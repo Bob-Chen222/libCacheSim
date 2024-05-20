@@ -89,9 +89,6 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
   if (cache_specific_params != NULL) {
     LRU_delay_parse_params(cache, cache_specific_params);
   }
-
-  printf("delay time: %llu\n", params->delay_time);
-
   
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "LRU_delay_%f",
            params->delay_ratio);

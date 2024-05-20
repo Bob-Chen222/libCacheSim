@@ -55,6 +55,20 @@ static inline cache_obj_t *_last_obj_in_bucket(const hashtable_t *hashtable,
   return cur_obj_in_bucket;
 }
 
+static inline void add_to_bucket_f(hashtable_t *hashtable,
+                                   cache_obj_t *cache_obj) {
+  uint64_t hv = get_hash_value_int_64(&cache_obj->obj_id) &
+                hashmask(hashtable->hashpower);
+  if (hashtable->ptr_table[hv] == NULL) {
+    hashtable->ptr_table[hv] = cache_obj;
+    return;
+  }
+  cache_obj_t *head_ptr = hashtable->ptr_table[hv];
+
+  cache_obj->hash_f_next = head_ptr;
+  hashtable->ptr_table[hv] = cache_obj;
+                                   }
+
 /* add an object to the hashtable */
 static inline void add_to_bucket(hashtable_t *hashtable,
                                  cache_obj_t *cache_obj) {
@@ -64,7 +78,7 @@ static inline void add_to_bucket(hashtable_t *hashtable,
     hashtable->ptr_table[hv] = cache_obj;
     return;
   }
-  head_ptr = hashtable->ptr_table[hv];
+  cache_obj_t *head_ptr = hashtable->ptr_table[hv];
 
   cache_obj->hash_next = head_ptr;
   hashtable->ptr_table[hv] = cache_obj;
@@ -92,7 +106,7 @@ hashtable_t *create_chained_hashtable_v2(const uint16_t hashpower) {
   size_t size = sizeof(cache_obj_t *) * hashsize(hashtable->hashpower);
   hashtable->ptr_table = my_malloc_n(cache_obj_t *, hashsize(hashpower));
   if (hashtable->ptr_table == NULL) {
-    ERROR("allcoate hash table %zu entry * %lu B = %ld MiB failed\n",
+    ERROR("allocate hash table %zu entry * %lu B = %ld MiB failed\n",
           sizeof(cache_obj_t *), (unsigned long)(hashsize(hashpower)),
           (long)(sizeof(cache_obj_t *) * hashsize(hashpower) / 1024 / 1024));
     exit(1);
@@ -158,6 +172,19 @@ cache_obj_t *chained_hashtable_insert_obj_v2(hashtable_t *hashtable,
 
   add_to_bucket(hashtable, cache_obj);
   hashtable->n_obj += 1;
+  return cache_obj;
+}
+
+/* the user needs to make sure the added object is not in the hash table */
+cache_obj_t *chained_hashtable_f_insert_obj_v2(hashtable_t *hashtable,
+                                             cache_obj_t *cache_obj) {
+  DEBUG_ASSERT(hashtable->external_obj);
+  // if (hashtable->n_obj > (uint64_t)(hashsize(hashtable->hashpower) *
+  //                                   CHAINED_HASHTABLE_EXPAND_THRESHOLD))
+  //   _chained_hashtable_expand_v2(hashtable);
+
+  add_to_bucket_f(hashtable, cache_obj);
+  // hashtable->n_obj += 1;
   return cache_obj;
 }
 
@@ -314,6 +341,30 @@ void chained_hashtable_foreach_v2(hashtable_t *hashtable,
   }
 }
 
+cache_obj_t *chained_hashtable_f_find_obj_id_v2(const hashtable_t *hashtable,
+                                              const obj_id_t obj_id) {
+
+  // we will use the same lock
+  DEBUG_ASSERT(obj_id != UINT64_MAX);
+  DEBUG_ASSERT(obj_id != 0);
+  cache_obj_t *cache_obj = NULL;
+  uint64_t hv = get_hash_value_int_64(&obj_id);
+  hv = hv & hashmask(hashtable->hashpower);
+
+  cache_obj = hashtable->ptr_table[hv] -> hash_f_next;
+
+  // DEBUG_ASSERT(is_loop(cache_obj, NULL) == false);
+
+  while (cache_obj) {
+    if (cache_obj->obj_id == obj_id) {
+      return cache_obj;
+    }
+    cache_obj = cache_obj->hash_f_next;
+  }
+  return cache_obj;
+}
+
+
 void free_chained_hashtable_v2(hashtable_t *hashtable) {
   if (!hashtable->external_obj)
     chained_hashtable_foreach_v2(hashtable, foreach_free_obj, NULL);
@@ -354,6 +405,28 @@ static void _chained_hashtable_expand_v2(hashtable_t *hashtable) {
     }
   }
   my_free(sizeof(cache_obj_t) * hashsize(hashtable->hashpower), old_table);
+}
+
+static inline void foreach_free_hash_f_next(cache_obj_t *cache_obj, void *user_data) {
+  cache_obj -> hash_f_next = NULL;
+}
+
+void chained_hashtable_f_foreach_v2(hashtable_t *hashtable,
+                                  hashtable_iter iter_func, void *user_data) {
+  cache_obj_t *cur_obj, *next_obj;
+  for (uint64_t i = 0; i < hashsize(hashtable->hashpower); i++) {
+    cur_obj = hashtable->ptr_table[i];
+    while (cur_obj != NULL) {
+      next_obj = cur_obj->hash_f_next;
+      iter_func(cur_obj, user_data);
+      cur_obj = next_obj;
+    }
+  }
+}
+
+void free_chained_hashtable_f_v2(hashtable_t *hashtable) {
+  if (!hashtable->external_obj)
+    chained_hashtable_f_foreach_v2(hashtable, foreach_free_hash_f_next, NULL);
 }
 
 void check_hashtable_integrity_v2(const hashtable_t *hashtable) {

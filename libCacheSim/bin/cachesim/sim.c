@@ -63,7 +63,6 @@ void simulate(reader_t *reader, cache_t *cache, int report_interval,
   }
 
   double runtime = gettime() - start_time;
-  printf("one_hit_count: %d\n", cache->one_hit_count); 
 
   char output_str[1024];
   char size_str[8];

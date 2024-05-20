@@ -23,21 +23,14 @@ extern "C" {
 typedef struct {
   cache_obj_t *q_head;
   cache_obj_t *q_tail;
-  // clock uses one-bit counter
-  int n_bit_counter;
-  // max_freq = 1 << (n_bit_counter - 1)
-  int max_freq;
-
-  int64_t n_obj_rewritten;
-  int64_t n_byte_rewritten;
-
-  // fields added in addition to clock-
   uint64_t batch_size; // determines how often promotion is performed
   float promotion_ratio; // determines how many objects are promoted
-  cache_t *buffer;     // stores to-be-promoted objects, even if they are evicted from the main cache
+  cache_obj_t **buffer; //a large buffer is fine because it still isolated each thread's access
+  uint64_t num_thread; // will always be 1
+  uint64_t buffer_pos;
 } lpFIFO_batch_params_t;
 
-static const char *DEFAULT_PARAMS = "n-bit-counter=1,batch-size=0.2";
+static const char *DEFAULT_PARAMS = "batch-size=0.2";
 
 // ***********************************************************************
 // ****                                                               ****
@@ -55,7 +48,7 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
 static cache_obj_t *lpFIFO_batch_insert(cache_t *cache, const request_t *req);
 static cache_obj_t *lpFIFO_batch_to_evict(cache_t *cache, const request_t *req);
 static void lpFIFO_batch_evict(cache_t *cache, const request_t *req);
-static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req);
+static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache_obj_t **buff);
 static bool lpFIFO_batch_remove(cache_t *cache, const obj_id_t obj_id);
 
 // ***********************************************************************
@@ -95,9 +88,9 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
   params->q_head = NULL;
   params->q_tail = NULL;
-  params->n_bit_counter = 1;
-  params->max_freq = 1;
   params->batch_size = 10000;
+  params->num_thread = 1;
+  params->buffer_pos = 0;
 
   lpFIFO_batch_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
@@ -112,7 +105,8 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
   if (ccache_params_local.cache_size == 0) {
     ccache_params_local.cache_size = 1;
   }
-  params->buffer = FIFO_init(ccache_params_local, NULL);
+
+  params->buffer = malloc(sizeof(cache_obj_t*) * params->batch_size);
 
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "lpFIFO_batch-%f",
              params->promotion_ratio);
@@ -127,7 +121,7 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
  */
 static void lpFIFO_batch_free(cache_t *cache) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)(cache->eviction_params);
-  params->buffer->cache_free(params->buffer);
+  free(params->buffer);
   free(cache->eviction_params);
   cache_struct_free(cache);
 }
@@ -152,14 +146,6 @@ static void lpFIFO_batch_free(cache_t *cache) {
  * @return true if cache hit, false if cache miss
  */
 static bool lpFIFO_batch_get(cache_t *cache, const request_t *req) {
-  lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
-  // if update, promote when reached batch size
-  // if ((cache->n_req + 1)% 100 == 0) {
-  //   printf("n-req: %ld\n", cache->n_req);
-  // }
-  if ((cache->n_req + 1)% params->batch_size == 0) {
-    lpFIFO_batch_promote_all(cache, req);
-  }
   return cache_get_base(cache, req);
 }
 
@@ -182,17 +168,16 @@ static bool lpFIFO_batch_get(cache_t *cache, const request_t *req) {
 static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
                                const bool update_cache) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
-  cache_t *buff = params->buffer;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
-  if (obj != NULL && update_cache && !buff->find(buff, req, false)) {
-    // while (!buff->can_insert(buff, req)) {
-    //   printf("should never call eviction\n");
-    //   buff->evict(buff, NULL);
-    // }
-    assert((cache->get_occupied_byte(cache) + req->obj_size +
-              cache->obj_md_size >
-          cache->cache_size));
-    buff->insert(buff, req);
+
+  if (obj != NULL && update_cache) {
+    // atomic add 1 and then read the value
+    params->buffer[params->buffer_pos] = obj;
+    params->buffer_pos += 1;
+    if (params->buffer_pos == params -> batch_size){
+      lpFIFO_batch_promote_all(cache, req, params->buffer);
+      params->buffer_pos = 0;
+    }
 #ifdef USE_BELADY
     obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -213,7 +198,6 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *lpFIFO_batch_insert(cache_t *cache, const request_t *req) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
-
   cache_obj_t *obj = cache_insert_base(cache, req);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 #ifdef USE_BELADY
@@ -277,31 +261,18 @@ static void lpFIFO_batch_evict(cache_t *cache, const request_t *req) {
  * @param cache
  * @param req not used
  */
-static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req) {
+static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache_obj_t **buff) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
-  cache_t *buff = params->buffer;
-  cache_obj_t *obj_to_promote;
-  // reinsert all objects stored in buffer
-  cache_obj_t *batched_obj = buff->to_evict(buff, NULL);
-  request_t *local_req = new_request();
   int count = 0;
-  while (batched_obj)
-  {
-    // if (count % (int)(params->batch_size / 10) == 0) {
-    //   printf("Transferred %d objects\n", count);
-    // }
-    copy_cache_obj_to_request(local_req, batched_obj);
-    buff->evict(buff, local_req);
-    // if still in cache, move to head of queue
-    obj_to_promote = cache->find(cache, local_req, false);
-    if (obj_to_promote != NULL) {
-      move_obj_to_head(&params->q_head, &params->q_tail, obj_to_promote);
+  cache_obj_t *obj_to_promote = NULL;
+  for (obj_to_promote = buff[count]; count < params->batch_size; obj_to_promote = buff[count]) {
+    // copy_cache_obj_to_request(local_req, obj_to_promote);
+    cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_to_promote->obj_id);
+    if (obj != NULL) {
+      move_obj_to_head(&params->q_head, &params->q_tail, obj);
     }
-
-    batched_obj = buff->to_evict(buff, NULL);
     count += 1;
   }
-  free_request(local_req);
 }
 
 /**
@@ -374,7 +345,7 @@ static const char *lpFIFO_batch_current_params(cache_t *cache,
                                         lpFIFO_batch_params_t *params) {
   static __thread char params_str[128];
   int n =
-      snprintf(params_str, 128, "n-bit-counter=%d, batch-size=%lu\n", params->n_bit_counter, params->batch_size);
+      snprintf(params_str, 128, "not set currently\n");
 
   return params_str;
 }
@@ -397,18 +368,11 @@ static void lpFIFO_batch_parse_params(cache_t *cache,
       params_str++;
     }
 
-    if (strcasecmp(key, "n-bit-counter") == 0) {
-      params->n_bit_counter = (int)strtol(value, &end, 0);
-      params->max_freq = (1 << params->n_bit_counter) - 1;
-      if (strlen(end) > 2) {
-        ERROR("param parsing error, find string \"%s\" after number\n", end);
-      }
-    } else if (strcasecmp(key, "batch-size") == 0) {
+    if (strcasecmp(key, "batch-size") == 0) {
       if (strchr(value, '.') != NULL) {
         // input is a float
-        params->batch_size = (uint64_t)(strtof(value, &end) * cache->cache_size);
-        // printf("batch-size: %lu\n", params->batch_size);
         params->promotion_ratio = strtof(value, &end);
+        params->batch_size = (uint64_t)(strtof(value, &end) * cache->cache_size);
       }
       else {
         params->batch_size = (uint64_t)strtol(value, &end, 0);

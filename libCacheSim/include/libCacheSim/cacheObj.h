@@ -151,6 +151,7 @@ typedef struct {
 struct cache_obj;
 typedef struct cache_obj {
   struct cache_obj *hash_next;
+  struct cache_obj *hash_f_next;
   obj_id_t obj_id;
   uint32_t obj_size;
   pthread_mutex_t lock;

@@ -53,7 +53,7 @@ typedef struct {
 
 } FH_params_t;
 
-static const char *DEFAULT_PARAMS = "split-point=0.77,miss-diff=0.01";
+static const char *DEFAULT_PARAMS = "split-point=0.0,miss-diff=0.0001";
 // ***********************************************************************
 // ****                                                               ****
 // ****                   function declarations                       ****
@@ -216,27 +216,26 @@ static cache_obj_t *FH_lru_insert(cache_t *cache, const request_t *req) {
 }
 
 static bool FH_lru_get(cache_t *cache, const request_t *req, FH_params_t *params, const bool from_regular){
+  cache->n_req += 1;
   cache_obj_t *obj = FH_lru_find(cache, req, true);
   bool hit = (obj != NULL);
-  if (hit){
-    return hit;
-  }
 
-  // printf("this should happen I believe\n");
-  if (!cache->can_insert(cache, req)) {
-    // VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
-    //          req->obj_id);
-    // printf("cannot insert\n");
+
+  if (hit) {
+    VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
+  } else if (!cache->can_insert(cache, req)) {
+    VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
+             req->obj_id);
   } else {
-    // printf("cache n_obj: %d, cache size: %d\n", cache->n_obj, cache->cache_size);
-    if (cache->get_n_obj(cache) + 1 > cache->cache_size) {
-      FH_lru_evict(cache, req);
+    while (cache->get_occupied_byte(cache) + req->obj_size +
+               cache->obj_md_size >
+           cache->cache_size) {
+        FH_lru_evict(cache, req);
     }
-    // DEBUG_ASSERT(cache->n_obj + 100 <= cache->cache_size);
     FH_lru_insert(cache, req);
   }
 
-  return false;
+  return hit;
 }
 
 /**
@@ -290,22 +289,36 @@ static void FH_free(cache_t *cache) {
  */
 static bool FH_get(cache_t *cache, const request_t *req) {
   // we just first do very regular LRU cache
-  FH_params_t *params = (FH_params_t *)cache->eviction_params;
-  // other threads need to check whether the cache is currently in construction
-  if (params->is_frozen){
-    // if (!params->start_time){
-    //   params->start_time = gettime();
-    //   printf("starttime get: %.2lf\n", params->start_time);
-    // }
-    // printf("frozen\n");
-    // do the FH operations including possible deconstructions
-    return FH_Frozen_get(cache, req, params);
-  }else{
-    // printf("regular\n");
-    // do the regular cache operations including possible constructions
-    return FH_Regular_get(cache, req, params);
-  }
-  return false;
+//   FH_params_t *params = (FH_params_t *)cache->eviction_params;
+//   // other threads need to check whether the cache is currently in construction
+//   if (params->is_frozen){
+//     // if (!params->start_time){
+//     //   params->start_time = gettime();
+//     //   printf("starttime get: %.2lf\n", params->start_time);
+//     // }
+//     // printf("frozen\n");
+//     // do the FH operations including possible deconstructions
+//     if (FH_Frozen_get(cache, req, params)){
+//       printf("true\n");
+//       return true;
+//     }else{
+//       printf("false\n");
+//       return false;
+//     }
+//     // return FH_Frozen_get(cache, req, params);
+//   }else{
+//     // printf("regular\n");
+//     // do the regular cache operations including possible constructions
+//     if (FH_Regular_get(cache, req, params)){
+//         printf("true\n");
+//         return true;
+//     }else{
+//         printf("false\n");
+//         return false;
+//     }
+//   }
+  return FH_Regular_get(cache, req, (FH_params_t *)cache->eviction_params);
+//   return false;
 }
 
 static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *params){
@@ -343,6 +356,7 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
   float cur_miss_ratio = ((float)params->frozen_cache_miss / (float)params->frozen_cache_access);
   if (cur_miss_ratio - params->regular_miss_ratio > params->miss_ratio_diff && params->frozen_cache_access > cache->cache_size){
     if (!params->called_deconstruction){
+      INFO("start deconstructing\n");
       params->called_deconstruction = true;
       deconstruction(cache, params);
     }
@@ -378,13 +392,13 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
     // bool TRUE = false;
     // bool FALSE = true;
     if (!params->called_construction){
-      // INFO("start constructing\n");
+      INFO("start constructing\n");
       // printf("params->regular_access is %lu\n", params->regular_cache_access);
       params->called_construction = true;
-      pthread_t construct_thread;
-      pthread_create(&construct_thread, NULL, (void *)construction, (void *)cache);
-      pthread_detach(construct_thread);
-      // construction(cache);
+    //   pthread_t construct_thread;
+    //   pthread_create(&construct_thread, NULL, (void *)construction, (void *)cache);
+    //   pthread_detach(construct_thread);
+      construction(cache);
     }
   }
 
@@ -478,7 +492,10 @@ static void construction(void* c){
   params->f_head = params->q_head;
   params->q_head = cur;
   params->f_tail = cur->queue.prev;
-  params->f_tail->queue.next = NULL;
+  if (params->f_tail != NULL){
+    params->f_tail->queue.next = NULL;
+    params->f_tail->queue.next = NULL;
+  }
   params->q_head->queue.prev = NULL;
 
   

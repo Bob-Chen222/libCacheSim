@@ -19,6 +19,9 @@ typedef struct {
   uint64_t delay_time; // determines how often promotion is performed
   float delay_ratio;
   uint64_t vtime;
+
+  // profiling
+  uint64_t promote_time;
 } LRU_delay_params_t;
 
 static const char *DEFAULT_PARAMS = "delay-time=0.2";
@@ -104,6 +107,8 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
  * @param cache
  */
 static void LRU_delay_free(cache_t *cache) { 
+    LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+    printf("promotion total: %lu\n", params->promote_time);
     free(cache->eviction_params);
     cache_struct_free(cache);
 }
@@ -158,8 +163,9 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
   static __thread uint64_t local_vtime = 0;
   // __atomic_fetch_add(&params->vtime, 1, __ATOMIC_RELAXED);
   local_vtime += 1;
-  if (local_vtime % 100 == 0){
-    __atomic_fetch_add(&params->vtime, 100, __ATOMIC_RELAXED);
+  if (local_vtime % 1000 == 0){
+    __atomic_fetch_add(&params->vtime, 1000, __ATOMIC_RELAXED);
+    local_vtime = 0;
   }
   if (cache_obj && likely(update_cache) && params->vtime - cache_obj->delay_count.last_vtime > params->delay_time) {
     /* lru_head is the newest, move cur obj to lru_head */
@@ -172,6 +178,7 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
       if (cache_obj && params->vtime - cache_obj->delay_count.last_vtime > params->delay_time) {
         move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
         cache_obj->delay_count.last_vtime = params->vtime;
+        params->promote_time++;
       }
       pthread_spin_unlock(&cache->lock);
       // update the last access time

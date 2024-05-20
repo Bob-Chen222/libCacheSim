@@ -107,7 +107,9 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
   // do warmup for the cache
   request_t* req = new_request();
   uint64_t num_obj_inserted = 0;
-  for (uint64_t i = 0; i < warmup_cnt; i++) {
+  uint64_t start_offset = 0;
+  for (uint64_t i = 0; i < warmup_cnt && num_obj_inserted < cache->cache_size; i++) {
+    start_offset += 1;
     uint32_t real_time = 0;
     uint64_t obj_id = oracles[i];
     uint32_t obj_size = 1;
@@ -151,7 +153,7 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
     for (uint64_t j = 0; j < req_cnt / num_threads; j++) {
       req_list[j] = new_request();
       uint32_t real_time = 0;
-      uint64_t obj_id = oracles[j * num_threads + i + warmup_cnt];
+      uint64_t obj_id = oracles[j * num_threads + i + start_offset];
       uint32_t obj_size = 1;
       int64_t next_access_vtime = -1;
       req_list[j]->clock_time = real_time;

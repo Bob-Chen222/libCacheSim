@@ -16,7 +16,7 @@ typedef struct {
   cache_obj_t *q_head;
   cache_obj_t *q_tail;
   // fields added in addition to clock-
-  uint64_t delay_time; // determines how often promotion is performed
+  uint64_t delay_time; // now the delay time becomes insertion time
   float delay_ratio;
   uint64_t vtime;
 
@@ -160,13 +160,13 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
   LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
   cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
   // atomic_fetch_add(&params->vtime, 1);
-  static __thread uint64_t local_vtime = 0;
-  // __atomic_fetch_add(&params->vtime, 1, __ATOMIC_RELAXED);
-  local_vtime += 1;
-  if (local_vtime % 1000 == 0){
-    __atomic_fetch_add(&params->vtime, 1000, __ATOMIC_RELAXED);
-    local_vtime = 0;
-  }
+  // static __thread uint64_t local_vtime = 0;
+  // // __atomic_fetch_add(&params->vtime, 1, __ATOMIC_RELAXED);
+  // local_vtime += 1;
+  // if (local_vtime % 1000 == 0){
+  //   __atomic_fetch_add(&params->vtime, 1000, __ATOMIC_RELAXED);
+  //   local_vtime = 0;
+  // }
   if (cache_obj && likely(update_cache) && params->vtime - cache_obj->delay_count.last_vtime > params->delay_time) {
     /* lru_head is the newest, move cur obj to lru_head */
 #ifdef USE_BELADY
@@ -200,13 +200,24 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *LRU_delay_insert(cache_t *cache, const request_t *req) {
   // usleep(1);
+
+  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+  // static __thread uint64_t local_vtime = 0;
+  // // __atomic_fetch_add(&params->vtime, 1, __ATOMIC_RELAXED);
+  // local_vtime += 1;
+  // if (local_vtime % 100 == 0){
+  //   __atomic_fetch_add(&params->vtime, 100, __ATOMIC_RELAXED);
+  //   local_vtime = 0;
+  // }
+
   pthread_spin_lock(&cache->lock);
+  //since we are under the protection of lock, I believe it is ok to just use regular addition
+  params->vtime += 1;
   cache_obj_t *obj = cache_insert_base(cache, req);
   if (obj == NULL) {
     pthread_spin_unlock(&cache->lock);
     return NULL;
   }
-  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
   obj->delay_count.last_vtime = params->vtime;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
   pthread_spin_unlock(&cache->lock);

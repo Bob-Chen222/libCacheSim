@@ -1,13 +1,20 @@
-
-
+#define _GNU_SOURCE             /* See feature_test_macros(7) */
+#include <stdatomic.h>
+#include "data_gen.h"
+#include <unistd.h>
+#include <errno.h>
+#include <pthread.h>
+#include <sched.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sysexits.h>
 #include "../../include/libCacheSim/cache.h"
 #include "../../include/libCacheSim/reader.h"
 #include "../../utils/include/mymath.h"
 #include "../../utils/include/mystr.h"
 #include "../../utils/include/mysys.h"
-#include <pthread.h>
-#include <stdatomic.h>
-#include "data_gen.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,18 +27,35 @@ typedef struct thread_params {
   uint64_t num_threads;
   uint64_t req_cnt;
   uint64_t miss_cnt;
-  uint64_t* oracle;
   request_t** req_list;
 } thread_params_t;
 
+
 void* thread_function(void* arg){
 
-  // printf("triggered thread_id: %lu\n", ((thread_params_t*)arg)->thread_id);
   thread_params_t* thread_params = (thread_params_t*)arg;
   uint64_t thread_id = thread_params->thread_id;
   uint64_t num_threads = thread_params->num_threads;
   uint64_t item_size = thread_params->reader->item_size;
   uint64_t req_cnt = thread_params->req_cnt;
+
+  request_t* wasted = new_request();
+
+  // printf("triggered thread_id: %lu\n", ((thread_params_t*)arg)->thread_id);
+  // pthread_set_affinity(((thread_params_t*)arg)->thread_id);
+  /* bind worker to the core */
+  cpu_set_t cpuset;
+  pthread_t thread = pthread_self();
+
+  CPU_ZERO(&cpuset);
+  CPU_SET(thread_id, &cpuset);
+
+  if (pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset) != 0) {
+    printf("fail to bind worker thread to core %lu: %s\n", thread_id,
+           strerror(errno));
+  } else {
+    // printf("binding worker thread to core %lu\n", thread_id);
+  }
 
   
 
@@ -40,16 +64,19 @@ void* thread_function(void* arg){
   for (uint64_t i = 0; i < req_cnt / num_threads; i++) {
     request_t* req = thread_params->req_list[i];
     // printf("obj_id: %ld\n", req->obj_id);
-    
+
     // printf("%ld\n", req->obj_id);
     if (!thread_params->cache->get(thread_params->cache, req)) {
       miss_cnt++;
     }
+
+    memcpy(req, wasted, sizeof(request_t));
     // move to the next request
   }
   // only used for oracleGeneralBin
   // printf("miss count: %ld\n", miss_cnt);
   atomic_fetch_add(&thread_params->miss_cnt, miss_cnt);
+  free_request(wasted);
   return NULL;
 
 }
@@ -64,15 +91,22 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
   // printf("num_thread: %lu\n", num_threads);
   int req_cnt = 10000000;
   int obj_num = 100000;
-  int warmup_cnt = 100;
+  int warmup_cnt = 15000000;
   double alpha = 1;
+  bool write_to_file_flag = false;
 
   // printf("generating file\n");
   uint64_t* oracles = generate_zipf(alpha, req_cnt + warmup_cnt, obj_num);
   // printf("generating file finished\n");
 
+  if (write_to_file_flag) {
+    write_to_file("/users/bobob/zipf.bin", oracles, req_cnt, write_to_file_flag);
+    return;
+  }
+
   // do warmup for the cache
   request_t* req = new_request();
+  uint64_t num_obj_inserted = 0;
   for (uint64_t i = 0; i < warmup_cnt; i++) {
     uint32_t real_time = 0;
     uint64_t obj_id = oracles[i];
@@ -85,9 +119,13 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
     if (!cache->find(cache, req, true)) {
       // insert the object into the linked list
       cache->insert(cache, req);
+      num_obj_inserted++;
     }
   }
-  // printf("warmup finished, cache objects: %lu\n", cache->n_obj);
+
+
+
+  // need to make sure that after warmup the cache is full
   cache->warmup_complete = true;
   free_request(req);
 
@@ -108,13 +146,12 @@ void parallel_simulate(reader_t *reader, cache_t *cache, int report_interval,
     thread_params[i].num_threads = num_threads;
     thread_params[i].miss_cnt = 0;
     thread_params[i].req_cnt = req_cnt;
-    thread_params[i].oracle = oracles;
     // preload the file
     request_t** req_list = malloc(sizeof(request_t*) * req_cnt / num_threads);
     for (uint64_t j = 0; j < req_cnt / num_threads; j++) {
       req_list[j] = new_request();
       uint32_t real_time = 0;
-      uint64_t obj_id = oracles[j * num_threads + i];
+      uint64_t obj_id = oracles[j * num_threads + i + warmup_cnt];
       uint32_t obj_size = 1;
       int64_t next_access_vtime = -1;
       req_list[j]->clock_time = real_time;

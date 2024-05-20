@@ -203,16 +203,10 @@ static void FH_lru_evict(cache_t *cache, const request_t *req) {
  * @return the inserted object
  */
 static cache_obj_t *FH_lru_insert(cache_t *cache, const request_t *req) {
-//   pthread_spin_lock(&cache->lock);
   FH_params_t *params = (FH_params_t *)cache->eviction_params;
-  // if (__atomic_load_n(&params->constucting, __ATOMIC_RELAXED)){
-  //   pthread_spin_unlock(&cache->lock);
-  //   return NULL;
-  // }
   cache_obj_t *obj = cache_insert_base(cache, req);
   DEBUG_ASSERT(obj != NULL);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-//   pthread_spin_unlock(&cache->lock);
   return obj;
 }
 
@@ -246,21 +240,6 @@ static bool FH_lru_get(cache_t *cache, const request_t *req, FH_params_t *params
  */
 static void FH_free(cache_t *cache) { 
   FH_params_t* params = (FH_params_t*)cache->eviction_params;
-  // looping
-  // while (params->num_extra_thread){
-  // }
-  // float runtime = gettime() - params->start_time;
-  // printf("start time: %.2lf\n", params->start_time);
-  // printf("run time: %.2lf\n", runtime);
-  // printf("frozen cache access is %lu\n", params->frozen_cache_access);
-  // printf("frozen throughput is throughput %.2lf MQPS\n", (double)params->frozen_cache_access / 1000000 / runtime);
-  // printf("FC hit is %lu\n", params->FC_cache_hit);
-  // printf("DC hit is %lu\n", params->DC_cache_hit);
-  // printf("Total miss is %lu\n", params->frozen_cache_miss);
-  // printf("Total access is %lu\n", params->frozen_cache_access);
-  // printf("Total miss ratio is %f\n", (float)params->frozen_cache_miss / (float)params->frozen_cache_access);
-  // printf("Regular miss ratio is %f\n", params->regular_miss_ratio);
-  // printf("cache n_obj: %d\n", cache->n_obj);
   if (params->hash_table_f != NULL){
     free_hashtable(params->hash_table_f);
   }
@@ -293,41 +272,14 @@ static bool FH_get(cache_t *cache, const request_t *req) {
   FH_params_t *params = (FH_params_t *)cache->eviction_params;
   // other threads need to check whether the cache is currently in construction
   if (params->is_frozen){
-    // if (!params->start_time){
-    //   params->start_time = gettime();
-    //   printf("starttime get: %.2lf\n", params->start_time);
-    // }
-    // printf("frozen\n");
-    // do the FH operations including possible deconstructions
-    if (FH_Frozen_get(cache, req, params)){
-    //   printf("true\n");
-      return true;
-    }else{
-    //   printf("false\n");
-      return false;
-    }
-    // return FH_Frozen_get(cache, req, params);
+   return FH_Frozen_get(cache, req, params);
   }else{
-    // printf("regular\n");
-    // do the regular cache operations including possible constructions
-    if (FH_Regular_get(cache, req, params)){
-        // printf("true\n");
-        return true;
-    }else{
-        // printf("false\n");
-        return false;
-    }
+   return FH_Regular_get(cache, req, params);
   }
-//   return FH_Regular_get(cache, req, (FH_params_t *)cache->eviction_params);
   return false;
 }
 
 static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *params){
-  // we first check whether the frozen hashtable has the requested entry
-  // printf("frozen id: %d\n", req->obj_id);
-  // __atomic_fetch_add(&params->frozen_cache_access, 1, __ATOMIC_RELAXED);
-//   static __thread uint64_t local_counter = 0;
-//   batch_add(&local_counter, &params->frozen_cache_access);
   params->frozen_cache_access++;
 
   static __thread uint64_t local_miss = 0;
@@ -382,19 +334,9 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
     }
   }
 
-  // check whether it is time for reconstruction
-  // 1. the cache should be full
-  // 2. the cache should already wait for 2 * cache_size accesses
-  // pthread_rwlock_unlock(&params->constructing);
-  // WARNING: each thread may conatins less than 100 objects and cannot contribute to the total
   if ((params->regular_cache_access >= 2 * cache->cache_size) && (cache->n_obj >= params->split_obj)){
-    // if ((params->regular_cache_access == 10000)){
-    // do compare and set and if it is true then go on
-    // bool TRUE = false;
-    // bool FALSE = true;
     if (!params->called_construction){
       INFO("start constructing\n");
-      // printf("params->regular_access is %lu\n", params->regular_cache_access);
       params->called_construction = true;
     //   pthread_t construct_thread;
     //   pthread_create(&construct_thread, NULL, (void *)construction, (void *)cache);
@@ -407,21 +349,11 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
 }
 
 static void deconstruction(cache_t *cache, FH_params_t *params){
-  // merge the two lists
-  // printf("FC hit is %lu\n", params->FC_cache_hit);
-  // printf("DC hit is %lu\n", params->DC_cache_hit);
-  // printf("Total miss is %lu\n", params->frozen_cache_miss);
-  // printf("Total access is %lu\n", params->frozen_cache_access);
-  // printf("Total miss ratio is %f\n", (float)params->frozen_cache_miss / (float)params->frozen_cache_access);
-  // printf("regular miss ratio is %f\n", params->regular_miss_ratio);
   if (params->f_head != NULL){
     params->f_tail->queue.next = params->q_head;
     params->q_head->queue.prev = params->f_tail;
     params->q_head = params->f_head;
   }
-//   uint64_t ca = 0;
-//   __atomic_store(&params->regular_cache_access, &ca, __ATOMIC_RELAXED);
-//   __atomic_store(&params->regular_cache_miss, &ca, __ATOMIC_RELAXED);
   params->regular_cache_access = 0;
   params->regular_cache_miss = 0;
   params->regular_miss_ratio = 0;
@@ -438,9 +370,6 @@ static void construction(void* c){
   cache_t *cache = (cache_t *)c;
   FH_params_t *params = (FH_params_t *)cache->eviction_params;
   params->regular_miss_ratio = ((float)params->regular_cache_miss / (float)(params->regular_cache_access - cache->cache_size));
-  // printf("cache n_obj is %d\n", cache->n_obj);
-  // printf("cache occupied bytes is %d\n", cache->occupied_byte);
-  // printf("cache_size is %d\n", cache->cache_size);
   DEBUG_ASSERT(params->regular_miss_ratio >= 0);
   params->regular_cache_access = 0;
   params->regular_cache_miss = 0;
@@ -457,37 +386,22 @@ static void construction(void* c){
   int count = 0;
   
   int miss_cur = params->regular_cache_miss; //keep track of current misses so that we know how many newly inserted is in the hash
-  // printf("miss_cur is %d\n", miss_cur);
-  // printf("regular_cache_miss is %lu\n", params->regular_cache_miss);
-  // printf("split_obj is %d\n", params->split_obj);
   
-//   bool TRUE = true;
-//   bool FALSE = false;
-//   __atomic_store(&params->constucting, &TRUE, __ATOMIC_RELAXED);
   params->constucting = true;
 
   // WARNING: this variable is extremely vulnerable to batch_add because if the actual miss is not updated,
   // it will go to far
   while (count + params -> regular_cache_miss - miss_cur < params->split_obj && cur -> queue.next){
     DEBUG_ASSERT(cur != NULL);
-    // printf("count is %d\n", count);
-    // printf("regular_cache_miss is %lu\n", params->regular_cache_miss);
-    // printf("miss_cur is %d\n", miss_cur);
     cur = cur->queue.next;
     count++;
   }
-  // printf("final count is %d\n", count);
 
 
-  // at this point we know the split point but still need somehow a atomic system to make sure that it will not lead to racing
-  // WARNING: my current decision is that I will use q_head as new FC head and hope that in this way it will not lead to racing
-  // TODO: need to add extra hash pointer to support shared objects between two hashtables
 
   // after decided which point, we serve the request but do not promote the object
   for (cache_obj_t* tmp = params->q_head; tmp != cur; tmp = tmp->queue.next){
     DEBUG_ASSERT(tmp != NULL);
-    // hashtable_insert_obj(params->hash_table_f, tmp);
-    // hashtable_f_insert_obj_id(params->hash_table_f, tmp);
     hashtable_f_insert_obj(params->hash_table_f, tmp);
   }
   params->f_head = params->q_head;
@@ -501,10 +415,6 @@ static void construction(void* c){
 
   
 
-  //update stats after construction
-  // uint64_t ca = 0;
-  // __atomic_store(&params->frozen_cache_access, &ca, __ATOMIC_RELAXED);
-  // __atomic_store(&params->frozen_cache_miss, &ca, __ATOMIC_RELAXED);
   params->frozen_cache_access = 0;
   params->frozen_cache_miss = 0;
 
@@ -513,7 +423,6 @@ static void construction(void* c){
   params->is_frozen = true;
   params->constucting = false;
   DEBUG_ASSERT(params->f_head->queue.prev == NULL);
-  // printf("regular access is %lu\n", params->regular_cache_access);
   params->called_deconstruction = false;
 }
 
@@ -619,16 +528,12 @@ static void FH_print_cache(const cache_t *cache) {
 
 static void FH_parse_params(cache_t *cache,
                                const char *cache_specific_params) {
-  // printf("cache_specific: %s\n", cache_specific_params);
   FH_params_t *params = (FH_params_t *)cache->eviction_params;
   char *params_str = strdup(cache_specific_params);
   char *old_params_str = params_str;
   char *end = NULL;
 
   while (params_str != NULL && params_str[0] != '\0') {
-    /* different parameters are separated by comma,
-     * key and value are separated by = */
-    // printf("params_str: %s\n", params_str);
     char *key = strsep((char **)&params_str, "=");
     char *value = strsep((char **)&params_str, ",");
 
@@ -639,7 +544,6 @@ static void FH_parse_params(cache_t *cache,
 
     if (strcasecmp(key, "split-point") == 0) {
       if (strchr(value, '.') != NULL) {
-        // input is a float
         params->split_point = strtof(value, &end);
       }
       else {

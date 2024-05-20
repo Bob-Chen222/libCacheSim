@@ -156,7 +156,7 @@ static cache_obj_t* FH_lru_find(cache_t *cache, const request_t *req,
   cache_obj_t *cache_obj = cache_find_base(cache, req, true);
 
   if (cache_obj && likely(true)) {
-    if (!__atomic_load_n(&params->constucting, __ATOMIC_RELAXED)){
+    if (!params->constucting){
       // only promote object in qlist
       if (params->is_frozen && from_regular){
         return cache_obj;
@@ -312,8 +312,9 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
   // we first check whether the frozen hashtable has the requested entry
   // printf("frozen id: %d\n", req->obj_id);
   // __atomic_fetch_add(&params->frozen_cache_access, 1, __ATOMIC_RELAXED);
-  static __thread uint64_t local_counter = 0;
-  batch_add(&local_counter, &params->frozen_cache_access);
+//   static __thread uint64_t local_counter = 0;
+//   batch_add(&local_counter, &params->frozen_cache_access);
+  params->frozen_cache_access++;
 
   static __thread uint64_t local_miss = 0;
 
@@ -328,7 +329,8 @@ static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *par
     bool result = FH_lru_get(cache, req, params, false);
     if (!result){
       // __atomic_fetch_add(&params->frozen_cache_miss, 1, __ATOMIC_RELAXED);
-      batch_add(&local_miss, &params->frozen_cache_miss);
+    //   batch_add(&local_miss, &params->frozen_cache_miss);
+    params->frozen_cache_miss++;
     }else{
       // __atomic_fetch_add(&params->DC_cache_hit, 1, __ATOMIC_RELAXED);
       return true;
@@ -352,14 +354,16 @@ static bool FH_Regular_get(cache_t *cache, const request_t *req, FH_params_t *pa
   // we just first do very regular LRU cache
   bool res = false;
   // __atomic_fetch_add(&params->regular_cache_access, 1, __ATOMIC_RELAXED);
-  static __thread uint64_t local_counter = 0;
-  static __thread uint64_t local_miss = 0;
-  batch_add(&local_counter, &params->regular_cache_access);
+//   static __thread uint64_t local_counter = 0;
+//   static __thread uint64_t local_miss = 0;
+//   batch_add(&local_counter, &params->regular_cache_access);
+  params->regular_cache_access++;
   res = FH_lru_get(cache, req, params, true);
   if (!res){
     if (params->regular_cache_access > cache -> cache_size){
       // __atomic_fetch_add(&params->regular_cache_miss, 1, __ATOMIC_RELAXED);
-      batch_add(&local_miss, &params->regular_cache_miss);
+        //   batch_add(&local_miss, &params->regular_cache_miss);
+        params->regular_cache_miss++;
     }
   }
 
@@ -400,11 +404,11 @@ static void deconstruction(cache_t *cache, FH_params_t *params){
     params->q_head->queue.prev = params->f_tail;
     params->q_head = params->f_head;
   }
-  uint64_t ca = 0;
-  __atomic_store(&params->regular_cache_access, &ca, __ATOMIC_RELAXED);
-  __atomic_store(&params->regular_cache_miss, &ca, __ATOMIC_RELAXED);
-  // params->regular_cache_access = 0;
-  // params->regular_cache_miss = 0;
+//   uint64_t ca = 0;
+//   __atomic_store(&params->regular_cache_access, &ca, __ATOMIC_RELAXED);
+//   __atomic_store(&params->regular_cache_miss, &ca, __ATOMIC_RELAXED);
+  params->regular_cache_access = 0;
+  params->regular_cache_miss = 0;
   params->regular_miss_ratio = 0;
   params->f_head = NULL;
 
@@ -467,7 +471,9 @@ static void construction(void* c){
   // after decided which point, we serve the request but do not promote the object
   for (cache_obj_t* tmp = params->q_head; tmp != cur; tmp = tmp->queue.next){
     DEBUG_ASSERT(tmp != NULL);
-    hashtable_insert_obj(params->hash_table_f, tmp);
+    // hashtable_insert_obj(params->hash_table_f, tmp);
+    // hashtable_f_insert_obj_id(params->hash_table_f, tmp);
+    hashtable_f_insert_obj(params->hash_table_f, tmp);
   }
   params->f_head = params->q_head;
   params->q_head = cur;

@@ -159,6 +159,7 @@ static cache_obj_t* FH_lru_find(cache_t *cache, const request_t *req,
     if (!params->constucting){
       // only promote object in qlist
       if (params->is_frozen && from_regular){
+        printf("not here anymore\n");
         return cache_obj;
       }
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj); 
@@ -217,7 +218,7 @@ static cache_obj_t *FH_lru_insert(cache_t *cache, const request_t *req) {
 
 static bool FH_lru_get(cache_t *cache, const request_t *req, FH_params_t *params, const bool from_regular){
   cache->n_req += 1;
-  cache_obj_t *obj = FH_lru_find(cache, req, true);
+  cache_obj_t *obj = FH_lru_find(cache, req, from_regular);
   bool hit = (obj != NULL);
 
 
@@ -289,36 +290,36 @@ static void FH_free(cache_t *cache) {
  */
 static bool FH_get(cache_t *cache, const request_t *req) {
   // we just first do very regular LRU cache
-//   FH_params_t *params = (FH_params_t *)cache->eviction_params;
-//   // other threads need to check whether the cache is currently in construction
-//   if (params->is_frozen){
-//     // if (!params->start_time){
-//     //   params->start_time = gettime();
-//     //   printf("starttime get: %.2lf\n", params->start_time);
-//     // }
-//     // printf("frozen\n");
-//     // do the FH operations including possible deconstructions
-//     if (FH_Frozen_get(cache, req, params)){
-//       printf("true\n");
-//       return true;
-//     }else{
-//       printf("false\n");
-//       return false;
-//     }
-//     // return FH_Frozen_get(cache, req, params);
-//   }else{
-//     // printf("regular\n");
-//     // do the regular cache operations including possible constructions
-//     if (FH_Regular_get(cache, req, params)){
-//         printf("true\n");
-//         return true;
-//     }else{
-//         printf("false\n");
-//         return false;
-//     }
-//   }
-  return FH_Regular_get(cache, req, (FH_params_t *)cache->eviction_params);
-//   return false;
+  FH_params_t *params = (FH_params_t *)cache->eviction_params;
+  // other threads need to check whether the cache is currently in construction
+  if (params->is_frozen){
+    // if (!params->start_time){
+    //   params->start_time = gettime();
+    //   printf("starttime get: %.2lf\n", params->start_time);
+    // }
+    // printf("frozen\n");
+    // do the FH operations including possible deconstructions
+    if (FH_Frozen_get(cache, req, params)){
+    //   printf("true\n");
+      return true;
+    }else{
+    //   printf("false\n");
+      return false;
+    }
+    // return FH_Frozen_get(cache, req, params);
+  }else{
+    // printf("regular\n");
+    // do the regular cache operations including possible constructions
+    if (FH_Regular_get(cache, req, params)){
+        // printf("true\n");
+        return true;
+    }else{
+        // printf("false\n");
+        return false;
+    }
+  }
+//   return FH_Regular_get(cache, req, (FH_params_t *)cache->eviction_params);
+  return false;
 }
 
 static bool FH_Frozen_get(cache_t *cache, const request_t *req, FH_params_t *params){

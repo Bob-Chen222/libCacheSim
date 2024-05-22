@@ -175,10 +175,9 @@ cache_obj_t *chained_hashtable_insert_obj_v2(hashtable_t *hashtable,
   return cache_obj;
 }
 
-/* the user needs to make sure the added object is not in the hash table */
 cache_obj_t *chained_hashtable_f_insert_obj_v2(hashtable_t *hashtable,
                                              cache_obj_t *cache_obj) {
-  DEBUG_ASSERT(hashtable->external_obj);
+  // DEBUG_ASSERT(hashtable->external_obj);
   // if (hashtable->n_obj > (uint64_t)(hashsize(hashtable->hashpower) *
   //                                   CHAINED_HASHTABLE_EXPAND_THRESHOLD))
   //   _chained_hashtable_expand_v2(hashtable);
@@ -351,7 +350,7 @@ cache_obj_t *chained_hashtable_f_find_obj_id_v2(const hashtable_t *hashtable,
   uint64_t hv = get_hash_value_int_64(&obj_id);
   hv = hv & hashmask(hashtable->hashpower);
 
-  cache_obj = hashtable->ptr_table[hv] -> hash_f_next;
+  cache_obj = hashtable->ptr_table[hv];
 
   // DEBUG_ASSERT(is_loop(cache_obj, NULL) == false);
 

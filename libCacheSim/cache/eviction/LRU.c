@@ -9,6 +9,7 @@
 //  Copyright © 2018 Juncheng. All rights reserved.
 //
 
+#include <pthread.h> 
 #include "../../dataStructure/hashtable/hashtable.h"
 #include "../../include/libCacheSim/evictionAlgo.h"
 
@@ -64,6 +65,9 @@ cache_t *LRU_init(const common_cache_params_t ccache_params,
   cache->print_cache = LRU_print_cache;
 
   pthread_spin_init(&cache->lock, PTHREAD_PROCESS_PRIVATE);
+  pthread_cond_init(&cache->cond_var, NULL);
+  pthread_mutex_init(&cache->lock2, NULL);
+  cache->val_lock = UINT64_MAX;
 
   if (ccache_params.consider_obj_metadata) {
     cache->obj_md_size = 8 * 2;
@@ -131,20 +135,22 @@ static bool LRU_get(cache_t *cache, const request_t *req) {
  */
 static cache_obj_t *LRU_find(cache_t *cache, const request_t *req,
                              const bool update_cache) {
-  // spin_lock(&cache->val_lock);
-  pthread_spin_lock(&cache->lock);
-  cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
 
-  if (cache_obj && likely(update_cache)) {
-    /* lru_head is the newest, move cur obj to lru_head */
-#ifdef USE_BELADY
-    if (req->next_access_vtime != INT64_MAX)
-#endif
-      LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
-      // print_list(params->q_head, params->q_tail);
+
+  LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
+  cache_obj_t *cache_obj = hashtable_find_obj_id(cache->hashtable, req->obj_id);
+  pthread_spin_lock(&cache->lock);
+  // pthread_mutex_lock(&cache->lock2);
+  cache_obj = hashtable_find_obj_id(cache->hashtable, req->obj_id);
+  if (cache_obj) {
+      // spin_lock(&cache->val_lock);
+      // printf("we are here\n");
+      // pthread_cond_wait(&cache->cond_var, &cache->lock2);
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
+      // pthread_cond_signal(&cache->cond_var);
+      // spin_unlock(&cache->val_lock);
   }
-  // spin_unlock(&cache->val_lock);
+  // pthread_mutex_unlock(&cache->lock2);
   pthread_spin_unlock(&cache->lock);
   return cache_obj;
 }

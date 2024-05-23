@@ -27,6 +27,11 @@ typedef struct {
   uint64_t queue_size;
   cache_obj_t **buffers; //buffers for each thread
   uint64_t num_thread;
+
+
+  // profiling stats
+  uint64_t num_hit_activation;
+  uint64_t num_miss_activation;
 } bp_wrapper_params_t;
 
 static const char *DEFAULT_PARAMS = "batch-size=32,queue-size=64";
@@ -121,6 +126,8 @@ cache_t *bp_wrapper_init(const common_cache_params_t ccache_params,
 static void bp_wrapper_free(cache_t *cache) {
   bp_wrapper_params_t *params = (bp_wrapper_params_t *)(cache->eviction_params);
   // free(params->buffer);
+  printf("num_hit_activation: %lu\n", params->num_hit_activation);
+  printf("num_miss_activation: %lu\n", params->num_miss_activation);
   free(cache->eviction_params);
   cache_struct_free(cache);
 }
@@ -173,6 +180,9 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
     
     if (pos >= batch_size) {
       //pseudocode
+      // for (int i = 0; i < pos; i++) {
+      //   __builtin_prefetch(&buff[i]);
+      // }
       trylock_outcome = pthread_spin_trylock(&cache->lock);
     }else{
       // there are still fewer objects than batch-size so we just stop here
@@ -183,14 +193,16 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
       if (pos < queue_size){
         return true;
       }else{
+        // for (int i = 0; i < pos; i++) {
+        //   __builtin_prefetch(&buff[i]);
+        // }
         pthread_spin_lock(&cache->lock);
       }
     }
 
+    params->num_hit_activation += 1;
+    // printf("hit activation at: %lu\n", pos);
     // do the prefetching for all objects currently in buffer
-    for (int i = 0; i < pos; i++) {
-      __builtin_prefetch(&buff[i]);
-    }
     for (int i = 0; i < pos; i++) {
       cache_obj_t *obj = buff[i];
       // promote it to the head of the queue
@@ -216,11 +228,13 @@ static bool bp_wrapper_get(cache_t *cache, const request_t *req) {
     return true;
   }else{
     // do the prefetching for all objects currently in buffer
+    params->num_miss_activation += 1;
     for (int i = 0; i < pos; i++) {
       __builtin_prefetch(&buff[i]);
     }
     // lock
     pthread_spin_lock(&cache->lock);
+    // printf("miss activation at: %lu\n", pos);
     for (int i = 0; i < pos; i++) {
       cache_obj_t *obj = buff[i];
       // promote it to the head of the queue

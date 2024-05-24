@@ -146,7 +146,9 @@ static cache_obj_t* LRU_Prob_find(cache_t *cache, const request_t *req,
   bool promote = false;
   cache_obj_t *obj = NULL;
   LRU_Prob_params_t *params = (LRU_Prob_params_t *)cache->eviction_params;
-  promote = (next_rand() % params->threshold == 0);
+  // promote = (next_rand() % params->threshold == 0);
+  double normalized_val = next_rand() / (double)UINT64_MAX;
+  promote = (normalized_val < params->prob);
   if (!promote){
     return cache_find_base(cache, req, update_cache);
   }else{

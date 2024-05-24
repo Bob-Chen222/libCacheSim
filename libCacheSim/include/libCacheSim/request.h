@@ -70,8 +70,6 @@ typedef struct request {
   bool valid; /* indicate whether request is valid request
                * it is invlalid if the trace reaches the end */
 
-  // TODO: delete it
-  uint64_t thread_id;
 } request_t;
 
 /**

@@ -215,19 +215,6 @@ void T_prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
     cache_obj->queue.next = old_head;
   } while(!__atomic_compare_exchange_n(head, &old_head, cache_obj, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
   old_head->queue.prev = cache_obj;
-
-  if (tail != NULL && *tail == NULL) {
-    // the list is empty
-    DEBUG_ASSERT(*head == NULL);
-    *tail = cache_obj;
-  }
-
-  if (*head != NULL) {
-    // the list has at least one element
-    (*head)->queue.prev = cache_obj;
-  }
-
-  *head = cache_obj;
 }
 
 /**
@@ -278,6 +265,7 @@ cache_obj_t* T_evict_last_obj(cache_obj_t **head, cache_obj_t **tail) {
   return old_tail;
 }
 
+
 void print_list(cache_obj_t *head, cache_obj_t *tail) {
   cache_obj_t *p = head;
   printf("head: %ld, tail: %ld\n", head->obj_id, tail->obj_id);
@@ -314,18 +302,6 @@ bool contains_object(cache_obj_t *head, cache_obj_t *obj){
   return false;
 }
 
-// bool is_loop(cache_obj_t *head, cache_obj_t *cur) {
-//   cache_obj_t *slow = head;
-//   cache_obj_t *fast = head;
-//   while (fast != NULL && fast->hash_f_next != NULL) {
-//     slow = slow->hash_f_next;
-//     fast = fast->hash_f_next->hash_f_next;
-//     if (slow == cur) {
-//       return true;
-//     }
-//   }
-//   return false;
-// }
 
 bool is_doublyll_intact(cache_obj_t *head, cache_obj_t *tail){
   // check whether linked list is consistent

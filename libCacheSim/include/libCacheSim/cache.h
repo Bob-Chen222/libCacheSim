@@ -129,6 +129,8 @@ struct cache {
   int64_t occupied_byte;
   int64_t thread_num;
   pthread_spinlock_t lock;
+  pthread_mutex_t lock2;
+  pthread_cond_t cond_var;
   uint64_t val_lock;
   bool warmup_complete;
   /************ end of private fields *************/

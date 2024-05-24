@@ -156,7 +156,7 @@ typedef struct cache_obj {
   uint32_t obj_size;
   pthread_mutex_t lock;
   struct {
-    struct cache_obj *prev;
+    struct cache_obj *prev; 
     struct cache_obj *next;
   } queue;  // for LRU, FIFO, etc.
 #ifdef SUPPORT_TTL

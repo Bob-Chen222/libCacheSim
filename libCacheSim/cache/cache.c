@@ -177,7 +177,6 @@ bool cache_can_insert_default(cache_t *cache, const request_t *req) {
  */
 cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
                              const bool update_cache) {
-  DEBUG_ASSERT(req->obj_id != 0);
   cache_obj_t *cache_obj = hashtable_find(cache->hashtable, req);
   return cache_obj;
 }
@@ -224,7 +223,7 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
     VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
              req->obj_id);
   } else {
-    if (cache->get_occupied_byte(cache) + req->obj_size +
+    while (cache->get_occupied_byte(cache) + req->obj_size +
                cache->obj_md_size >
            cache->cache_size) {
       cache->evict(cache, req);

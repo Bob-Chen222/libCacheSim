@@ -140,7 +140,7 @@ static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
   //no need for blocking
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   RandomK_params_t *params = (RandomK_params_t *)cache->eviction_params;
-  atomic_fetch_add(&params->vtime, 1);
+  __atomic_fetch_add(&params->vtime, 1, __ATOMIC_RELAXED);
   if (obj != NULL && update_cache) {
     atomic_store(&obj->RandomTwo.last_access_vtime, atomic_load(&params->vtime));
   }

@@ -273,14 +273,14 @@ static void lpFIFO_batch_evict(cache_t *cache, const request_t *req) {
  * @param cache
  * @param req not used
  */
-static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache_t *buff) {
+static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache_t *buffer) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
 
-  while (params->buffer->n_obj > 0){
+  while (buffer->n_obj > 0){
     // params->buffer->to_evict(params->buffer, req);
-    cache_obj_t *obj_to_promote = params->buffer->to_evict(params->buffer, req);
+    cache_obj_t *obj_to_promote = buffer->to_evict(buffer, req);
     cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_to_promote->obj_id);
-    params->buffer->evict(params->buffer, req);
+    buffer->evict(buffer, req);
     if (obj != NULL){
       move_obj_to_head(&params->q_head, &params->q_tail, obj);
     }

@@ -25,7 +25,8 @@ typedef struct {
   cache_obj_t *q_tail;
   uint64_t batch_size; // determines how often promotion is performed
   float promotion_ratio; // determines how many objects are promoted
-  cache_obj_t **buffer; //a large buffer is fine because it still isolated each thread's access
+  // cache_obj_t **buffer; //a large buffer is fine because it still isolated each thread's access
+  cache_t *buffer; //we need to keep the order of promotion, but I don't think it is necessary???, it can be changed anyway
   uint64_t num_thread; // will always be 1
   uint64_t buffer_pos;
 } lpFIFO_batch_params_t;
@@ -48,7 +49,7 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
 static cache_obj_t *lpFIFO_batch_insert(cache_t *cache, const request_t *req);
 static cache_obj_t *lpFIFO_batch_to_evict(cache_t *cache, const request_t *req);
 static void lpFIFO_batch_evict(cache_t *cache, const request_t *req);
-static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache_obj_t **buff);
+static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache_t *buff);
 static bool lpFIFO_batch_remove(cache_t *cache, const obj_id_t obj_id);
 
 // ***********************************************************************
@@ -106,7 +107,9 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
     ccache_params_local.cache_size = 1;
   }
 
-  params->buffer = malloc(sizeof(cache_obj_t*) * params->batch_size);
+  // params->buffer = malloc(sizeof(cache_obj_t*) * params->batch_size);
+  // init a fifo
+  params->buffer = FIFO_init(ccache_params_local, NULL);
 
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "lpFIFO_batch-%f",
              params->promotion_ratio);
@@ -172,12 +175,15 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
 
   if (obj != NULL && update_cache) {
     // atomic add 1 and then read the value
-    params->buffer[params->buffer_pos] = obj;
-    params->buffer_pos += 1;
-    if (params->buffer_pos == params -> batch_size){
-      lpFIFO_batch_promote_all(cache, req, params->buffer);
-      params->buffer_pos = 0;
+    // params->buffer[params->buffer_pos] = obj;
+    // params->buffer_pos += 1;
+    if (!params->buffer->find(params->buffer, req, true)){
+      params->buffer->insert(params->buffer, req);
     }
+    // if (params->buffer_pos == params -> batch_size){
+    //   lpFIFO_batch_promote_all(cache, req, params->buffer);
+    //   params->buffer_pos = 0;
+    // }
 #ifdef USE_BELADY
     obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -200,6 +206,12 @@ static cache_obj_t *lpFIFO_batch_insert(cache_t *cache, const request_t *req) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_insert_base(cache, req);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+  params->buffer_pos += 1;
+
+  if (params->buffer_pos == params->batch_size){
+    lpFIFO_batch_promote_all(cache, req, params->buffer);
+    params->buffer_pos = 0;
+  }
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -261,18 +273,30 @@ static void lpFIFO_batch_evict(cache_t *cache, const request_t *req) {
  * @param cache
  * @param req not used
  */
-static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache_obj_t **buff) {
+static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache_t *buff) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
-  int count = 0;
-  cache_obj_t *obj_to_promote = NULL;
-  for (obj_to_promote = buff[count]; count < params->batch_size; obj_to_promote = buff[count]) {
-    // copy_cache_obj_to_request(local_req, obj_to_promote);
+
+  while (params->buffer->n_obj > 0){
+    // params->buffer->to_evict(params->buffer, req);
+    cache_obj_t *obj_to_promote = params->buffer->to_evict(params->buffer, req);
     cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_to_promote->obj_id);
-    if (obj != NULL) {
+    if (obj != NULL){
+      params->buffer->evict(params->buffer, req);
       move_obj_to_head(&params->q_head, &params->q_tail, obj);
     }
-    count += 1;
   }
+
+  // int count = 0;
+  // cache_obj_t *obj_to_promote = NULL;
+  // for (obj_to_promote = buff[count]; count < params->batch_size; obj_to_promote = buff[count]) {
+  //   // copy_cache_obj_to_request(local_req, obj_to_promote);
+  //   cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_to_promote->obj_id);
+  //   if (obj != NULL) {
+  //     move_obj_to_head(&params->q_head, &params->q_tail, obj);
+  //   }
+  //   count += 1;
+  // }
+
 }
 
 /**

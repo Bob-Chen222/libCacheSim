@@ -280,8 +280,8 @@ static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache
     // params->buffer->to_evict(params->buffer, req);
     cache_obj_t *obj_to_promote = params->buffer->to_evict(params->buffer, req);
     cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_to_promote->obj_id);
+    params->buffer->evict(params->buffer, req);
     if (obj != NULL){
-      params->buffer->evict(params->buffer, req);
       move_obj_to_head(&params->q_head, &params->q_tail, obj);
     }
   }

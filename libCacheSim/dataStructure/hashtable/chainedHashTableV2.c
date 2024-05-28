@@ -100,17 +100,17 @@ static inline cache_obj_t* add_to_bucket(hashtable_t *hashtable,
 static inline cache_obj_t* add_obj_to_bucket(hashtable_t *hashtable,
                                  cache_obj_t *cache_obj) {
   //this function is only used for FrozenHot hashtable
-  uint64_t hv = get_hash_value_int_64(&cache_obj->obj_id) &
-                hashmask(hashtable->hashpower);
+  // uint64_t hv = get_hash_value_int_64(&cache_obj->obj_id) &
+  //               hashmask(hashtable->hashpower);
 
-  if (hashtable->ptr_table[hv]->hash_f_next == NULL) {
-    hashtable->ptr_table[hv] -> hash_f_next = cache_obj;
-    return cache_obj;
-  }
-  cache_obj_t *head_ptr = hashtable->ptr_table[hv] -> hash_f_next;
+  // if (hashtable->ptr_table[hv]->hash_f_next == NULL) {
+  //   hashtable->ptr_table[hv] -> hash_f_next = cache_obj;
+  //   return cache_obj;
+  // }
+  // cache_obj_t *head_ptr = hashtable->ptr_table[hv] -> hash_f_next;
 
-  cache_obj->hash_f_next = head_ptr;
-  hashtable->ptr_table[hv]->hash_f_next = cache_obj;
+  // cache_obj->hash_f_next = head_ptr;
+  // hashtable->ptr_table[hv]->hash_f_next = cache_obj;
   // // DEBUG_ASSERT(is_loop(head_ptr, cache_obj) == false);
   return cache_obj;
 }

@@ -236,7 +236,8 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
   cache_obj_t *obj_to_evict = T_evict_last_obj(&params->q_head, &params->q_tail);
   while (obj_to_evict->clock.freq > 0) {
     T_prepend_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
-    __atomic_fetch_sub(&obj_to_evict->clock.freq, 1, __ATOMIC_RELAXED);
+    // __atomic_fetch_sub(&obj_to_evict->clock.freq, 1, __ATOMIC_RELAXED);
+    obj_to_evict->clock.freq -= 1;
     obj_to_evict = T_evict_last_obj(&params->q_head, &params->q_tail);
   }
   // pthread_spin_unlock(&cache->lock);

@@ -244,7 +244,7 @@ static void FH_free(cache_t *cache) {
     free_hashtable(params->hash_table_f);
   }
   free(cache->eviction_params);
-  cache_struct_free(cache);
+  // cache_struct_free(cache);
 }
 
 

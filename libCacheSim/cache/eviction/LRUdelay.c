@@ -152,7 +152,7 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
 
   // no matter what, we need to check the buffer and see i
 
-  params->vtime++;
+  // params->vtime++;
   if (cache_obj && likely(update_cache) && params->vtime - cache_obj->delay_count.last_vtime > params->delay_time) {
     /* lru_head is the newest, move cur obj to lru_head */
 #ifdef USE_BELADY
@@ -180,6 +180,7 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *LRU_delay_insert(cache_t *cache, const request_t *req) {
   LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+  params->vtime++;
   cache_obj_t *obj = cache_insert_base(cache, req);
   obj->delay_count.last_vtime = params->vtime;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);

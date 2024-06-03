@@ -70,7 +70,7 @@ cache_t *RandomK_init(const common_cache_params_t ccache_params,
 
   cache->eviction_params = (RandomK_params_t *) malloc(sizeof(RandomK_params_t));
   RandomK_params_t *params = (RandomK_params_t *) cache->eviction_params;
-  params->k = 2;
+  params->k = 1;
   if (cache_specific_params != NULL) {
     RandomK_parse_params(cache, cache_specific_params);
   }

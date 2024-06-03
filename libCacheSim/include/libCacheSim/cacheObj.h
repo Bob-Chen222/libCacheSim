@@ -117,6 +117,7 @@ typedef struct {
 typedef struct {
   int64_t last_access_vtime;
   int32_t freq;
+  uint64_t time_insertion;
 } RandomTwo_obj_metadata_t;
 
 typedef struct {

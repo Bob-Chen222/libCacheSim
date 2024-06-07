@@ -240,9 +240,9 @@ static bool FH_lru_get(cache_t *cache, const request_t *req, FH_params_t *params
  */
 static void FH_free(cache_t *cache) { 
   FH_params_t* params = (FH_params_t*)cache->eviction_params;
-  if (params->hash_table_f != NULL){
-    free_hashtable(params->hash_table_f);
-  }
+  // if (params->hash_table_f != NULL){
+  //   free_hashtable(params->hash_table_f);
+  // }
   free(cache->eviction_params);
   // cache_struct_free(cache);
 }

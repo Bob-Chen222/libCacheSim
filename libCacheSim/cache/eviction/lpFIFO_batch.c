@@ -25,10 +25,17 @@ typedef struct {
   cache_obj_t *q_tail;
   uint64_t batch_size; // determines how often promotion is performed
   float promotion_ratio; // determines how many objects are promoted
+<<<<<<< Updated upstream
   // cache_obj_t **buffer; //a large buffer is fine because it still isolated each thread's access
   cache_t *buffer; //we need to keep the order of promotion, but I don't think it is necessary???, it can be changed anyway
+=======
+  uint64_t *buffer; //a large buffer is fine because it still isolated each thread's access
+>>>>>>> Stashed changes
   uint64_t num_thread; // will always be 1
   uint64_t buffer_pos;
+
+  uint64_t prev_promote_time;
+  uint64_t time_insert;
 } lpFIFO_batch_params_t;
 
 static const char *DEFAULT_PARAMS = "batch-size=0.2";
@@ -49,7 +56,11 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
 static cache_obj_t *lpFIFO_batch_insert(cache_t *cache, const request_t *req);
 static cache_obj_t *lpFIFO_batch_to_evict(cache_t *cache, const request_t *req);
 static void lpFIFO_batch_evict(cache_t *cache, const request_t *req);
+<<<<<<< Updated upstream
 static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache_t *buff);
+=======
+static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, uint64_t *buff, const uint64_t* batch_size);
+>>>>>>> Stashed changes
 static bool lpFIFO_batch_remove(cache_t *cache, const obj_id_t obj_id);
 
 // ***********************************************************************
@@ -93,6 +104,9 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
   params->num_thread = 1;
   params->buffer_pos = 0;
 
+  params->prev_promote_time = 0;
+  params->time_insert = 0;
+
   lpFIFO_batch_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
     lpFIFO_batch_parse_params(cache, cache_specific_params);
@@ -107,9 +121,13 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
     ccache_params_local.cache_size = 1;
   }
 
+<<<<<<< Updated upstream
   // params->buffer = malloc(sizeof(cache_obj_t*) * params->batch_size);
   // init a fifo
   params->buffer = FIFO_init(ccache_params_local, NULL);
+=======
+  params->buffer = malloc(sizeof(uint64_t) * params->batch_size);
+>>>>>>> Stashed changes
 
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "lpFIFO_batch-%f",
              params->promotion_ratio);
@@ -175,10 +193,19 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
 
   if (obj != NULL && update_cache) {
     // atomic add 1 and then read the value
+<<<<<<< Updated upstream
     // params->buffer[params->buffer_pos] = obj;
     // params->buffer_pos += 1;
     if (!params->buffer->find(params->buffer, req, true)){
       params->buffer->insert(params->buffer, req);
+=======
+    params->buffer[params->buffer_pos % params->batch_size] = obj -> obj_id;
+    params->buffer_pos += 1;
+    if (params->time_insert - params->prev_promote_time >= params -> batch_size){
+      lpFIFO_batch_promote_all(cache, req, params->buffer, &params -> batch_size);
+      params->prev_promote_time = params->time_insert;
+      params->buffer_pos = 0;
+>>>>>>> Stashed changes
     }
     // if (params->buffer_pos == params -> batch_size){
     //   lpFIFO_batch_promote_all(cache, req, params->buffer);
@@ -204,6 +231,7 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *lpFIFO_batch_insert(cache_t *cache, const request_t *req) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
+  params->time_insert += 1;
   cache_obj_t *obj = cache_insert_base(cache, req);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
   params->buffer_pos += 1;
@@ -273,6 +301,7 @@ static void lpFIFO_batch_evict(cache_t *cache, const request_t *req) {
  * @param cache
  * @param req not used
  */
+<<<<<<< Updated upstream
 static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache_t *buffer) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
 
@@ -284,6 +313,27 @@ static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, cache
     if (obj != NULL){
       move_obj_to_head(&params->q_head, &params->q_tail, obj);
     }
+=======
+static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, uint64_t *buff, const uint64_t* start) {
+  lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
+  uint64_t pos = 0;
+  uint64_t count = 0;
+  if (*start > params->batch_size) {
+    pos = *start;
+    count = params->batch_size;
+  }else{
+    count = *start;
+  }
+  uint64_t obj_to_promote = 0L;
+
+  for (int i = 0; i < count; i++) {
+    obj_to_promote = buff[pos % params->batch_size];
+    cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_to_promote);
+    if (obj != NULL) {
+      move_obj_to_head(&params->q_head, &params->q_tail, obj);
+    }
+    pos += 1;
+>>>>>>> Stashed changes
   }
 
   // int count = 0;

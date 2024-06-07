@@ -118,7 +118,7 @@ static inline cache_t *create_cache(const char *trace_path,
   } else if (strcasecmp(eviction_algo, "sfifov0") == 0) {
     cache = SFIFOv0_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lru-prob") == 0) {
-    cache = LRU_Prob_init(cc_params, eviction_params);
+    cache = lpLRU_prob_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lru-delay") == 0) {
     cache = LRU_delay_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lru-probv0") == 0) {

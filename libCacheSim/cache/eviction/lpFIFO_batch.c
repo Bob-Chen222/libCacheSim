@@ -28,6 +28,7 @@ typedef struct {
   uint64_t *buffer; //a large buffer is fine because it still isolated each thread's access
   uint64_t num_thread; // will always be 1
   uint64_t buffer_pos;
+  uint64_t buffer_size;
 
   uint64_t prev_promote_time;
   uint64_t time_insert;
@@ -92,6 +93,7 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
   params->q_head = NULL;
   params->q_tail = NULL;
   params->batch_size = 10000;
+  params->buffer_size = 100000000L;
   params->num_thread = 1;
   params->buffer_pos = 0;
 
@@ -107,12 +109,13 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
   if (params->batch_size == 0) {
     params->batch_size = 1;
   }
-  ccache_params_local.cache_size = params->batch_size;
-  if (ccache_params_local.cache_size == 0) {
-    ccache_params_local.cache_size = 1;
-  }
+  // ccache_params_local.cache_size = params->batch_size;
+  // if (ccache_params_local.cache_size == 0) {
+  //   ccache_params_local.cache_size = 1;
+  // }
 
-  params->buffer = malloc(sizeof(uint64_t) * params->batch_size);
+  params->buffer_size = cache->cache_size * 100; //set the multiplier to be 100
+  params->buffer = malloc(sizeof(uint64_t) * params->buffer_size);
 
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "lpFIFO_batch-%f",
              params->promotion_ratio);
@@ -178,7 +181,7 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
 
   if (obj != NULL && update_cache) {
     // atomic add 1 and then read the value
-    params->buffer[params->buffer_pos % params->batch_size] = obj -> obj_id;
+    params->buffer[params->buffer_pos % params->buffer_size] = obj -> obj_id;
     params->buffer_pos += 1;
     if (params->time_insert - params->prev_promote_time >= params -> batch_size){
       lpFIFO_batch_promote_all(cache, req, params->buffer, &params -> buffer_pos);
@@ -277,16 +280,16 @@ static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, uint6
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
   uint64_t pos = 0;
   uint64_t count = 0;
-  if (*start > params->batch_size) {
+  if (*start > params->buffer_size) {
     pos = *start;
-    count = params->batch_size;
+    count = params->buffer_size;
   }else{
     count = *start;
   }
   uint64_t obj_to_promote = 0L;
 
   for (int i = 0; i < count; i++) {
-    obj_to_promote = buff[pos % params->batch_size];
+    obj_to_promote = buff[pos % params->buffer_size];
     cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_to_promote);
     if (obj != NULL) {
       move_obj_to_head(&params->q_head, &params->q_tail, obj);

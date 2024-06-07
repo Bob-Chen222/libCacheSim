@@ -181,7 +181,7 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
     params->buffer[params->buffer_pos % params->batch_size] = obj -> obj_id;
     params->buffer_pos += 1;
     if (params->time_insert - params->prev_promote_time >= params -> batch_size){
-      lpFIFO_batch_promote_all(cache, req, params->buffer, &params -> batch_size);
+      lpFIFO_batch_promote_all(cache, req, params->buffer, &params -> buffer_pos);
       params->prev_promote_time = params->time_insert;
       params->buffer_pos = 0;
     }
@@ -212,12 +212,6 @@ static cache_obj_t *lpFIFO_batch_insert(cache_t *cache, const request_t *req) {
   params->time_insert += 1;
   cache_obj_t *obj = cache_insert_base(cache, req);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-  params->buffer_pos += 1;
-
-  if (params->buffer_pos == params->batch_size){
-    lpFIFO_batch_promote_all(cache, req, params->buffer);
-    params->buffer_pos = 0;
-  }
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -299,18 +293,6 @@ static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, uint6
     }
     pos += 1;
   }
-
-  // int count = 0;
-  // cache_obj_t *obj_to_promote = NULL;
-  // for (obj_to_promote = buff[count]; count < params->batch_size; obj_to_promote = buff[count]) {
-  //   // copy_cache_obj_to_request(local_req, obj_to_promote);
-  //   cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_to_promote->obj_id);
-  //   if (obj != NULL) {
-  //     move_obj_to_head(&params->q_head, &params->q_tail, obj);
-  //   }
-  //   count += 1;
-  // }
-
 }
 
 /**

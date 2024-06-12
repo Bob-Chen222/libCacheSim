@@ -177,7 +177,7 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
   static __thread uint64_t prev_promote_time = 0;
   if (!allocated) {
     allocated = true;
-    buffer = malloc(sizeof(cache_obj_t *) * params->target);
+    buffer = malloc(sizeof(cache_obj_t *) * cache->cache_size * 100);
   }
 
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);

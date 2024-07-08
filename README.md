@@ -2,33 +2,27 @@
 
 [![build](https://github.com/1a1a11a/libCacheSim/actions/workflows/build.yml/badge.svg)](https://github.com/1a1a11a/libCacheSim/actions/workflows/build.yml)
 
-The main development of libCacheSim is at [https://github.com/1a1a11a/libCacheSim](https://github.com/1a1a11a/libCacheSim), the [cachemon](https://github.com/cachemon/libCacheSim) repo is a mirror of the stable branch. 
+#### The main development of libCacheSim is at [https://github.com/1a1a11a/libCacheSim](https://github.com/1a1a11a/libCacheSim), the [cachemon](https://github.com/cachemon/libCacheSim) repo is a mirror of the stable branch. Please fork and submit PR to this repo. 
 
 <!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
-- [libCacheSim - building and running cache simulations](#libcachesim---building-and-running-cache-simulations)
-  - [News](#news)
-  - [What is libCacheSim](#what-is-libcachesim)
-  - [libCacheSim features](#libcachesim-features)
-  - [Supported algorithms](#supported-algorithms)
-  - [Build and Install libCacheSim](#build-and-install-libcachesim)
-    - [One-line install](#one-line-install)
-    - [Install dependency](#install-dependency)
-    - [Build libCacheSim](#build-libcachesim)
-  - [Usage](#usage)
-    - [cachesim (a high-performance cache simulator)](#cachesim-a-high-performance-cache-simulator)
-      - [basic usage](#basic-usage)
-      - [Run a single cache simulation](#run-a-single-cache-simulation)
-      - [Run multiple cache simulations with different cache sizes](#run-multiple-cache-simulations-with-different-cache-sizes)
-      - [Plot miss ratio curve](#plot-miss-ratio-curve)
-    - [Trace analysis](#trace-analysis)
-    - [Using libCacheSim as a library](#using-libcachesim-as-a-library)
-    - [Extending libCacheSim (new algorithms and trace types)](#extending-libcachesim-new-algorithms-and-trace-types)
-  - [Open source cache traces](#open-source-cache-traces)
-  - [Questions?](#questions)
-  - [Contributions](#contributions)
-  - [Reference](#reference)
-  - [License](#license)
-  - [Related](#related)
+- [What is libCacheSim](#what-is-libcachesim)
+- [libCacheSim features](#libcachesim-features)
+- [Supported algorithms](#supported-algorithms)
+- [Build and Install libCacheSim](#build-and-install-libcachesim)
+  - [One-line install](#one-line-install)
+  - [Install dependency](#install-dependency)
+  - [Build libCacheSim](#build-libcachesim)
+- [Usage](#usage)
+  - [cachesim (a high-performance cache simulator)](#cachesim-a-high-performance-cache-simulator)
+  - [Trace analysis](#trace-analysis)
+  - [Using libCacheSim as a library](#using-libcachesim-as-a-library)
+  - [Extending libCacheSim (new algorithms and trace types)](#extending-libcachesim-new-algorithms-and-trace-types)
+- [Open source cache traces](#open-source-cache-traces)
+- [Questions?](#questions)
+- [Contributions](#contributions)
+- [Reference](#reference)
+- [License](#license)
+- [Related](#related)
 <!-- TOC end -->
 
 
@@ -51,7 +45,7 @@ The main development of libCacheSim is at [https://github.com/1a1a11a/libCacheSi
 ## libCacheSim features 
 * **High performance** - over 20M requests/sec for a realistic trace replay. 
 * **High memory efficiency** - predictable and small memory footprint. 
-* **State-of-the-art algorithms** - eviction algorithms, admission algorithms, sampling techniques, approximate miss ratio computation, see [here](/doc/quickstart_cachesim.md). 
+* **State-of-the-art algorithms** - eviction algorithms, admission algorithms, prefetching algorithms, sampling techniques, approximate miss ratio computation, see [here](/doc/quickstart_cachesim.md). 
 * Parallelism out-of-the-box - uses the many CPU cores to speed up trace analysis and cache simulations. 
 * **The ONLY feature-rich trace analyzer** - all types of trace analysis you need, see [here](/doc/quickstart_traceAnalyzer.md).
 * **Simple API** - easy to build cache clusters, multi-layer caching, etc.; see [here](/doc/API.md).
@@ -61,6 +55,7 @@ The main development of libCacheSim is at [https://github.com/1a1a11a/libCacheSi
 <!-- TOC --><a name="supported-algorithms"></a>
 ## Supported algorithms
 cachesim supports the following algorithms:
+### Eviction algorithms
 * [FIFO](/libCacheSim/cache/eviction/FIFO.c), [LRU](/libCacheSim/cache/eviction/LRU.c), [Clock](/libCacheSim/cache/eviction/Clock.c), [SLRU](/libCacheSim/cache/eviction/SLRU.c)
 * [LFU](/libCacheSim/cache/eviction/LFU.c), [LFU with dynamic aging](/libCacheSim/cache/eviction/LFUDA.c)
 * [ARC](/libCacheSim/cache/eviction/ARC.c), [TwoQ](/libCacheSim/cache/eviction/TwoQ.c)
@@ -72,10 +67,19 @@ cachesim supports the following algorithms:
 * [LHD](/libCacheSim/cache/eviction/LHD/LHD_Interface.cpp)
 * [LRB](/libCacheSim/cache/eviction/LRB/LRB_Interface.cpp)
 * [GLCache](/libCacheSim/cache/eviction/GLCache/GLCache.c)
-* [TinyLFU](/libCacheSim/cache/eviction/TinyLFU.c)
+* [WTinyLFU](/libCacheSim/cache/eviction/WTinyLFU.c)
 * [QD-LP](/libCacheSim/cache/eviction/QDLP.c)
 * [S3-FIFO](/libCacheSim/cache/eviction/S3FIFO.c)
 * [Sieve](/libCacheSim/cache/eviction/Sieve.c)
+### Admission algorithms
+* [Adaptsize](/libCacheSim/cache/admission/adaptsize.c)
+* [Bloomfilter](/libCacheSim/cache/admission/bloomfilter.c)
+* [Prob](/libCacheSim/cache/admission/prob.c)
+* [Size](/libCacheSim/cache/admission/size.c)
+### Prefetching algorithms
+* [OBL](/libCacheSim/cache/prefetch/OBL.c)
+* [Mithril](/libCacheSim/cache/prefetch/Mithril.c)
+* [PG](/libCacheSim/cache/prefetch/PG.c)
 ---
 
 
@@ -85,7 +89,7 @@ cachesim supports the following algorithms:
 ### One-line install
 We provide some scripts for quick installation of libCacheSim. 
 ```bash
-cd scripts && bash install_dependency.sh && bash install_libcachesim.sh;
+cd scripts && bash install_dependency.sh && bash install_libcachesim.sh
 ```
 If this does not work, please 
 1. let us know what system you are using and what error you get
@@ -100,13 +104,13 @@ Please see [install.md](/doc/install.md) for instructions on how to install the 
 <!-- TOC --><a name="build-libcachesim"></a>
 ### Build libCacheSim
 cmake recommends **out-of-source build**, so we do it in a new directory:
-```
+```bash
 git clone https://github.com/1a1a11a/libCacheSim
-pushd libCachesim;
-mkdir _build && cd _build;
-cmake .. && make -j;
-[sudo] make install;
-popd;
+pushd libCacheSim
+mkdir _build && cd _build
+cmake .. && make -j
+[sudo] make install
+popd
 ```
 ---
 
@@ -144,7 +148,7 @@ Run the example traces with LRU eviction algorithm and 1GB cache size.
 # besides using byte as the unit, you can also treat all objects having the same size, and the size is the number of objects
 ./bin/cachesim ../data/trace.vscsi vscsi lru 1000,16000 --ignore-obj-size 1
 
-# use a csv trace, note the qutation marks when you have multiple options
+# use a csv trace, note the quotation marks when you have multiple options
 ./bin/cachesim ../data/trace.csv csv lru 1gb -t "time-col=2, obj-id-col=5, obj-size-col=4"
 
 # use a csv trace with more options
@@ -160,7 +164,7 @@ You can plot miss ratios of different algorithms and sizes, and plot the miss ra
 
 ```bash
 # plot miss ratio over size
-cd scripts;
+cd scripts
 python3 plot_mrc_size.py --tracepath ../data/twitter_cluster52.csv --trace-format csv --trace-format-params="time-col=1,obj-id-col=2,obj-size-col=3,delimiter=," --algos=fifo,lru,lecar,s3fifo --sizes=0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.3,0.4
 
 # plot miss ratio over time
@@ -173,7 +177,7 @@ python3 plot_mrc_time.py --tracepath ../data/twitter_cluster52.csv --trace-forma
 ### Trace analysis
 libCacheSim also has a trace analyzer that provides a lot of useful information about the trace. 
 And it is very fast, designed to work with billions of requests. 
-It also coms with a set of scripts to help you analyze the trace. 
+It also comes with a set of scripts to help you analyze the trace. 
 See [trace analysis](/doc/quickstart_traceAnalyzer.md) for more details.
 
 

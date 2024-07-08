@@ -79,7 +79,7 @@ After generating plot data, we can plot access pattern, request rate, size, reus
 python3 scripts/traceAnalysis/access_pattern.py ${dataname}.accessRtime
 
 # plot the access pattern using logical/virtual (request count) time 
-python3 scripts/traceAnalysis/access_pattern.py ${dataname}.accessRtime
+python3 scripts/traceAnalysis/access_pattern.py ${dataname}.accessVtime
 ```
 
 Some example plots are shown below:
@@ -178,7 +178,7 @@ The first 10m requests of the Twitter cluster52 trace. The left column shows wal
 # the popularity skewness ($\alpha$) is in the output of traceAnalyzer
 # this plots the request count/freq over object rank
 # note that measuring popularity plot does not make sense for very small traces and some block workloads  
-# and note that popularity is highly affected by the the layer of the cache hierarchy
+# and note that popularity is highly affected by the layer of the cache hierarchy
 python3 scripts/traceAnalysis/popularity.py ${dataname}.popularity
 ```
 
@@ -243,7 +243,7 @@ There are two versions of the plots, one is line plot, and the other is a heatma
 ```bash
 # this requires a long trace (e.g., 7 day) to generate a meaningful plot
 # and most block workloads do not have enough requests to plot meaningful popularity decay
-python3 scripts/traceAnalysis/popularity_decay.py ${dataname}.popularityDecay_w300
+python3 scripts/traceAnalysis/popularity_decay.py ${dataname}.popularityDecay_w300_obj
 ```
 
 <!-- Some example plots are shown below:
@@ -256,3 +256,15 @@ The block workload has most objects being 4 KiB and 64 KiB, while the Twitter wo
 The Request curve is weighted by request count, and the Object curve is weighted by object count. 
 </div>
 <br> -->
+
+### Advanced features 
+```bash
+# cap the number of requests read from the trace
+./traceAnalyzer --num-req=1000000 ../data/trace.vscsi vscsi
+
+# change output 
+./traceAnalyzer -o my-output ../data/trace.vscsi vscsi
+
+# use part of the trace to warm up the cache
+./traceAnalyzer --warmup-sec=86400 ../data/trace.vscsi vscsi
+```

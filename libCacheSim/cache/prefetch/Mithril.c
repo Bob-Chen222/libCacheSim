@@ -340,7 +340,7 @@ void Mithril_prefetch(cache_t *cache, const request_t *req) {
               (Mithril_params->pf_list_size + 1);
 
   request_t *new_req = my_malloc(request_t);
-  memcpy(new_req, req, sizeof(request_t));
+  copy_request(new_req, req);
 
   if (prefetch_table_index) {
     int i;
@@ -497,7 +497,7 @@ static inline bool _Mithril_check_sequential(cache_t *cache,
   if (Mithril_params->sequential_K == 0) return FALSE;
 
   request_t *new_req = my_malloc(request_t);
-  memcpy(new_req, req, sizeof(request_t));
+  copy_request(new_req, req);
   bool is_sequential = TRUE;
   gint sequential_K = Mithril_params->sequential_K;
   if (sequential_K == -1) { /* when use AMP, this is -1 */
@@ -631,7 +631,7 @@ static inline void _Mithril_record_entry(cache_t *cache, const request_t *req) {
 
   int i;
 
-  /* check it is sequtial or not */
+  /* check it is sequential or not */
   if (Mithril_params->sequential_type && _Mithril_check_sequential(cache, req))
     return;
 
@@ -741,7 +741,7 @@ static inline void _Mithril_record_entry(cache_t *cache, const request_t *req) {
           }
 
           /** for dataType c, now the pointer to string has been freed,
-           *  so mining table entry is incorrent,
+           *  so mining table entry is incorrect,
            *  but mining table entry will be deleted, so it is OK
            */
 
@@ -919,7 +919,7 @@ void print_prefetch_table(Mithril_params_t *Mithril_params) {
 }
 
 /**
- the mining funciton, it is called when mining table is ready
+ the mining function, it is called when mining table is ready
 
  @param Mithril the cache struct
  */

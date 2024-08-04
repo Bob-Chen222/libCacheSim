@@ -20,6 +20,9 @@ extern "C" {
 typedef struct Belady_params {
   /* a priority queue recording the next access time */
   pqueue_t *pq;
+
+  uint64_t vtime; //just a counter
+  uint64_t miss;
 } Belady_params_t;
 
 // #define EVICT_IMMEDIATELY_IF_NO_FUTURE_ACCESS 1
@@ -68,6 +71,8 @@ cache_t *Belady_init(const common_cache_params_t ccache_params,
 
   Belady_params_t *params = my_malloc(Belady_params_t);
   cache->eviction_params = params;
+  params -> vtime = 0;
+  params -> miss = 0;
 
   params->pq = pqueue_init((unsigned long)8e6);
   return cache;
@@ -113,6 +118,7 @@ static bool Belady_get(cache_t *cache, const request_t *req) {
   /* -2 means the trace does not have next_access ts information */
   DEBUG_ASSERT(req->next_access_vtime != -2);
   Belady_params_t *params = cache->eviction_params;
+  params->vtime ++;
 
   DEBUG_ASSERT(cache->n_obj == params->pq->size - 1);
   bool ret = cache_get_base(cache, req);
@@ -137,7 +143,7 @@ static bool Belady_get(cache_t *cache, const request_t *req) {
  * @return the object or NULL if not found
  */
 static cache_obj_t *Belady_find(cache_t *cache, const request_t *req,
-                                const bool update_cache) {
+                                const bool update_cache){
   Belady_params_t *params = cache->eviction_params;
   cache_obj_t *cached_obj = cache_find_base(cache, req, update_cache);
 
@@ -154,6 +160,7 @@ static cache_obj_t *Belady_find(cache_t *cache, const request_t *req,
   DEBUG_ASSERT(
       ((pq_node_t *)hashtable_find(cache->hashtable, req)->Belady.pq_node)
           ->pri.pri == req->next_access_vtime);
+  cached_obj ->Belady.freq ++;
 
 #if defined(EVICT_IMMEDIATELY_IF_NO_FUTURE_ACCESS)
   if (req->next_access_vtime == INT64_MAX) {
@@ -189,6 +196,7 @@ static cache_obj_t *Belady_insert(cache_t *cache, const request_t *req) {
   pqueue_insert(params->pq, (void *)node);
   cached_obj->Belady.pq_node = node;
   cached_obj->Belady.next_access_vtime = req->next_access_vtime;
+  cached_obj->Belady.freq = 0;
 
   DEBUG_ASSERT(
       ((pq_node_t *)hashtable_find(cache->hashtable, req)->Belady.pq_node)
@@ -231,12 +239,45 @@ static cache_obj_t *Belady_to_evict(cache_t *cache, __attribute__((unused))
 static void Belady_evict(cache_t *cache,
                          __attribute__((unused)) const request_t *req) {
   Belady_params_t *params = cache->eviction_params;
+  params->miss ++;
   pq_node_t *node = (pq_node_t *)pqueue_pop(params->pq);
 
   cache_obj_t *obj_to_evict =
       hashtable_find_obj_id(cache->hashtable, node->obj_id);
   DEBUG_ASSERT(node == obj_to_evict->Belady.pq_node);
 
+  // we have four types of objects to check
+  // type1: the absolute one hit
+  // type2: the last hit of a many hit objects
+  // type3: the only hit beyond distance
+  // type4: the last of many hits beyond distance
+  double miss_ratio;
+  miss_ratio = (double)params->miss / (double)params->vtime;
+  double expected_reuse_distance = (double)cache -> cache_size / miss_ratio;
+
+  DEBUG_ASSERT(expected_reuse_distance >= 0 && expected_reuse_distance <= (double)INT64_MAX);
+  assert(expected_reuse_distance >= 0 && expected_reuse_distance <= (double)INT64_MAX);
+  int64_t reuse_distance = obj_to_evict->Belady.next_access_vtime - params->vtime;
+  assert(reuse_distance >= 0);
+
+  if ((obj_to_evict -> Belady.next_access_vtime == INT64_MAX) && (obj_to_evict -> Belady.freq == 0)) {
+    // first type
+    cache -> type1 ++;
+  } else if ((obj_to_evict -> Belady.next_access_vtime == INT64_MAX) && (obj_to_evict -> Belady.freq > 0)) {
+    // second type
+    cache -> type2 ++;
+  } else if (( (int64_t) expected_reuse_distance < reuse_distance) && (obj_to_evict -> Belady.freq == 0)) {
+    // third type
+    cache -> type3 ++;
+  } else if (( (int64_t) expected_reuse_distance < reuse_distance) && (obj_to_evict -> Belady.freq > 0)) {
+    // fourth type
+    cache -> type4 ++;
+  } else {
+    // DEBUG_ASSERT((int64_t) expected_reuse_distance >= reuse_distance);
+    assert((int64_t) expected_reuse_distance >= reuse_distance);
+    // this is the non one hit access
+    cache -> type5 ++;
+  }
   obj_to_evict->Belady.pq_node = NULL;
   my_free(sizeof(pq_node_t), node);
 

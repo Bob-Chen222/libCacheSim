@@ -19,6 +19,8 @@ extern "C" {
 
 typedef struct RandomK_params {
     int k;
+    uint64_t vtime;
+    uint64_t miss;
 } RandomK_params_t;
 
 static const char *DEFAULT_PARAMS = "k=1";
@@ -71,6 +73,7 @@ cache_t *RandomK_init(const common_cache_params_t ccache_params,
   cache->eviction_params = (RandomK_params_t *) malloc(sizeof(RandomK_params_t));
   RandomK_params_t *params = (RandomK_params_t *) cache->eviction_params;
   params->k = 1;
+  params->vtime = 0;
   if (cache_specific_params != NULL) {
     RandomK_parse_params(cache, cache_specific_params);
   }
@@ -110,6 +113,8 @@ static void RandomK_free(cache_t *cache) {
  * @return true if cache hit, false if cache miss
  */
 static bool RandomK_get(cache_t *cache, const request_t *req) {
+  // get params
+  RandomK_params_t *params = (RandomK_params_t *)cache->eviction_params;
   return cache_get_base(cache, req);
 }
 
@@ -151,9 +156,24 @@ static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
  * @return the inserted object
  */
 static cache_obj_t *RandomK_insert(cache_t *cache, const request_t *req) {
+  // because in this version we can insert first
+  RandomK_params_t *params = (RandomK_params_t *)cache->eviction_params;
+  params->miss++;
+  params->vtime++;
+  double miss_ratio;
+  miss_ratio = (double)params->miss / (double)params->vtime;
+  double expected_reuse_distance = (double)cache -> cache_size / miss_ratio;
+  DEBUG_ASSERT(expected_reuse_distance >= 0 && expected_reuse_distance <= (double)INT64_MAX);
+  assert(expected_reuse_distance >= 0 && expected_reuse_distance <= (double)INT64_MAX);
+  int64_t reuse_distance = req -> next_access_vtime - params->vtime;
+  assert(reuse_distance >= 0);
+  if ((req -> next_access_vtime == INT64_MAX) || (int64_t) expected_reuse_distance < reuse_distance) {
+    return NULL;
+  }
   cache_obj_t *obj = cache_insert_base(cache, req);
   obj->RandomTwo.last_access_vtime = cache->n_req;
   obj->RandomTwo.freq = 0;
+  obj->RandomTwo.next_access_vtime = req -> next_access_vtime;
   return obj;
 }
 
@@ -194,9 +214,6 @@ static cache_obj_t *RandomK_select(cache_t *cache, const int k) {
 static void RandomK_evict(cache_t *cache, const request_t *req) {
   cache_obj_t *obj_to_evict = RandomK_to_evict(cache, req);
   DEBUG_ASSERT(obj_to_evict->obj_size != 0);
-  if (obj_to_evict->RandomTwo.freq == 0) {
-    cache->one_hit_count++;
-  }
   cache_evict_base(cache, obj_to_evict, true);
 }
 

@@ -230,6 +230,7 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
     params->n_obj_rewritten += 1;
     params->n_byte_rewritten += obj_to_evict->obj_size;
     move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
+    cache->n_promotion += 1;
     obj_to_evict = params->q_tail;
   }
 

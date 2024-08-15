@@ -19,6 +19,7 @@ typedef struct {
   uint64_t delay_time; // determines how often promotion is performed
   float delay_ratio;
   uint64_t vtime;
+  int n_promotion;
 } LRU_delay_params_t;
 
 static const char *DEFAULT_PARAMS = "delay-time=1";
@@ -85,6 +86,7 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
   params->delay_ratio = 0.0;
   cache->eviction_params = params;
   params->vtime = 0;
+  params->n_promotion = 0;
 
   if (cache_specific_params != NULL) {
     LRU_delay_parse_params(cache, cache_specific_params);
@@ -102,6 +104,8 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
  * @param cache
  */
 static void LRU_delay_free(cache_t *cache) { 
+    LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+    printf("n_promotion: %d\n", params->n_promotion);
     free(cache->eviction_params);
     cache_struct_free(cache);
 }
@@ -160,8 +164,10 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
 #endif
     //  check whether the last access time is greater than the delay time
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
+      cache -> n_promotion++;
       // update the last access time
       cache_obj->delay_count.last_vtime = params->vtime;
+      params->n_promotion++;
   }
 
   return cache_obj;

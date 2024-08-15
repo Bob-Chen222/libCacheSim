@@ -96,6 +96,12 @@ static void _simulate(gpointer data, gpointer user_data) {
     read_one_req(cloned_reader, req);
   }
 
+  // in this section, evict all objects in the cache
+  for (int i = 0; i < local_cache->n_obj; i++) {
+    local_cache->n_insert++;
+    local_cache->evict(local_cache, req);
+  }
+
 /* disabled due to ARC and LeCaR use ghost entries in the hash table */
 #if defined(SUPPORT_TTL) && defined(ENABLE_SCAN)
   /* get expiration information */
@@ -123,6 +129,18 @@ static void _simulate(gpointer data, gpointer user_data) {
   strncpy(result[idx].cache_name, local_cache->cache_name,
           CACHE_NAME_ARRAY_LEN);
 
+  result[idx].type1 = local_cache->type1;
+  result[idx].type2 = local_cache->type2;
+  result[idx].type3 = local_cache->type3;
+  result[idx].type4 = local_cache->type4;
+  result[idx].type5 = local_cache->type5;
+  
+  result[idx].n_promotion = local_cache->n_promotion;
+
+  result[idx].mean_stay_time = ((double)local_cache->sum_demotion_time) / ((double)local_cache->num_demotion_obj);
+  printf("mean stay time: %lf\n", result[idx].mean_stay_time);
+  printf("num_demotion_obj: %lu\n", local_cache->num_demotion_obj);
+  printf("sum_demotion_time: %lu\n", local_cache->sum_demotion_time);
   // report progress
   g_mutex_lock(&(params->mtx));
   (*(params->progress))++;

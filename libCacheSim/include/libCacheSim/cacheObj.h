@@ -27,7 +27,12 @@ typedef struct {
 
 typedef struct {
   int freq;
+  int64_t next_access_vtime;
 } Clock_obj_metadata_t;
+
+typedef struct {
+  int freq;
+} bc_obj_metadata_t;
 
 typedef struct {
   void *pq_node;
@@ -70,6 +75,8 @@ typedef struct {
 typedef struct Belady_obj_metadata {
   void *pq_node;
   int64_t next_access_vtime;
+  int64_t freq; //freq in cache
+  int type; // type1, type2, type3, type4, type5
 } Belady_obj_metadata_t;
 
 typedef struct {
@@ -92,6 +99,7 @@ typedef struct {
 
 typedef struct {
   uint64_t last_vtime;
+  int freq;
 }delay_obj_metadata_t;
 
 typedef struct {
@@ -118,6 +126,7 @@ typedef struct {
   int64_t last_access_vtime;
   int32_t freq;
   uint64_t time_insertion;
+  int64_t next_access_vtime;
 } RandomTwo_obj_metadata_t;
 
 typedef struct {
@@ -140,6 +149,10 @@ typedef struct {
 } S3FIFO_obj_metadata_t;
 
 typedef struct {
+  int64_t freq;
+} LRUProb_obj_metadata_t;
+
+typedef struct {
   int32_t freq;
 } __attribute__((packed)) Sieve_obj_params_t;
 
@@ -155,6 +168,7 @@ typedef struct cache_obj {
   struct cache_obj *hash_f_next;
   obj_id_t obj_id;
   uint32_t obj_size;
+  uint64_t last_access_time;
   pthread_mutex_t lock;
   struct {
     struct cache_obj *prev;
@@ -174,12 +188,14 @@ typedef struct cache_obj {
   union {
     LFU_obj_metadata_t lfu;          // for LFU
     Clock_obj_metadata_t clock;      // for Clock
+    bc_obj_metadata_t bc;      // for bc
     Size_obj_metadata_t Size;        // for Size
     ARC_obj_metadata_t ARC;          // for ARC
     LeCaR_obj_metadata_t LeCaR;      // for LeCaR
     Cacheus_obj_metadata_t Cacheus;  // for Cacheus
     SR_LRU_obj_metadata_t SR_LRU;
     CR_LFU_obj_metadata_t CR_LFU;
+    LRUProb_obj_metadata_t LRUProb;
     Hyperbolic_obj_metadata_t hyperbolic;
     RandomTwo_obj_metadata_t RandomTwo;
     Belady_obj_metadata_t Belady;
@@ -262,6 +278,8 @@ void remove_obj_from_list(cache_obj_t **head, cache_obj_t **tail,
 void move_obj_to_tail(cache_obj_t **head, cache_obj_t **tail,
                       cache_obj_t *cache_obj);
 
+int dist_marker_tail(cache_obj_t *marker, cache_obj_t *tail);
+
 /**
  * move an object to the head of the LRU queue (a doubly linked list)
  * @param head
@@ -279,6 +297,9 @@ void move_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
  * @param cache_obj
  */
 void prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
+                         cache_obj_t *cache_obj);
+
+void delay_prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail, cache_obj_t **marker,
                          cache_obj_t *cache_obj);
 
 /**

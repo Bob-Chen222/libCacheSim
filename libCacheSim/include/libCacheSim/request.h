@@ -62,6 +62,7 @@ typedef struct request {
 
   bool valid; /* indicate whether request is valid request
                * it is invalid if the trace reaches the end */
+  bool evicted; //used for random
 } request_t;
 
 /**

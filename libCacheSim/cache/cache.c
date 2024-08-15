@@ -45,6 +45,18 @@ cache_t *cache_struct_init(const char *const cache_name,
   cache->get_occupied_byte = cache_get_occupied_byte_default;
   cache->get_n_obj = cache_get_n_obj_default;
 
+  cache->num_demotion_obj = 0;
+  cache->sum_demotion_time = 0;
+
+  cache->type1 = 0;
+  cache->type2 = 0;
+  cache->type3 = 0;
+  cache->type4 = 0;
+  cache->type5 = 0;
+
+  cache->evicted = -1;
+  cache->n_promotion = 0;
+
   /* this option works only when eviction age tracking
    * is on in config.h */
 #if defined(TRACK_EVICTION_V_AGE)
@@ -198,6 +210,7 @@ cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
       cache_obj->misc.next_access_vtime = req->next_access_vtime;
       cache_obj->misc.freq += 1;
     }
+    cache_obj->last_access_time = cache->n_insert;
   }
 
   return cache_obj;
@@ -238,6 +251,7 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
     VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
              req->obj_id);
   } else {
+    cache->n_insert += 1;
     while (cache->get_occupied_byte(cache) + req->obj_size +
                cache->obj_md_size >
            cache->cache_size) {
@@ -268,6 +282,7 @@ cache_obj_t *cache_insert_base(cache_t *cache, const request_t *req) {
   cache->occupied_byte +=
       (int64_t)cache_obj->obj_size + (int64_t)cache->obj_md_size;
   cache->n_obj += 1;
+  cache_obj -> last_access_time = cache -> n_insert;
 
 #ifdef SUPPORT_TTL
   if (cache->default_ttl != 0 && req->ttl == 0) {
@@ -329,6 +344,13 @@ void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
   DEBUG_ASSERT(cache->occupied_byte >= obj->obj_size + cache->obj_md_size);
   cache->occupied_byte -= (obj->obj_size + cache->obj_md_size);
   cache->n_obj -= 1;
+  uint64_t demotion_time = 0;
+  cache -> sum_demotion_time += cache -> n_insert - obj -> last_access_time;
+  cache -> num_demotion_obj += 1;
+  // printf("add demotion time %ld\n", cache -> n_insert - obj -> last_access_time);
+  // prevent overflow
+  assert(cache -> sum_demotion_time >= (cache -> n_insert - obj -> last_access_time));
+
   if (remove_from_hashtable) {
     hashtable_delete(cache->hashtable, obj);
   }

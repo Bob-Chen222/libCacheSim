@@ -15,6 +15,7 @@ typedef struct {
 typedef struct {
   cache_obj_t *q_head;
   cache_obj_t *q_tail;
+  int n_promotion;
 } LRU_params_t;
 
 /* used by LFU related */
@@ -35,6 +36,9 @@ typedef struct {
 
   int64_t n_obj_rewritten;
   int64_t n_byte_rewritten;
+
+  int64_t miss;
+  int64_t vtime;
 } Clock_params_t;
 
 cache_t *ARC_init(const common_cache_params_t ccache_params,
@@ -183,6 +187,12 @@ cache_t *Sieve_init(const common_cache_params_t ccache_params,
 
 cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
                         const char *cache_specific_params);
+
+cache_t *LRU_delayv1_init(const common_cache_params_t ccache_params,
+                           const char *cache_specific_params);
+
+cache_t *bc_init(const common_cache_params_t ccache_params,
+                 const char *cache_specific_params);
                         
 
 #ifdef ENABLE_LRB

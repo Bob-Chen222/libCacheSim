@@ -89,6 +89,17 @@ typedef struct {
   int64_t expired_obj_cnt;
   int64_t expired_bytes;
   char cache_name[CACHE_NAME_ARRAY_LEN];
+
+  // profiling for belady
+  int64_t type1;
+  int64_t type2;
+  int64_t type3;
+  int64_t type4;
+  int64_t type5;
+
+  double mean_stay_time;
+
+  int64_t n_promotion;
 } cache_stat_t;
 
 struct hashtable;
@@ -118,6 +129,20 @@ struct cache {
 
   // other name: logical_time, virtual_time, reference_count
   int64_t n_req; /* number of requests (used by some eviction algo) */
+
+  int64_t type1;
+  int64_t type2;
+  int64_t type3;
+  int64_t type4;
+  int64_t type5;
+
+  uint64_t sum_demotion_time;
+  uint64_t num_demotion_obj;
+  int64_t n_insert;
+
+  int64_t n_promotion;
+
+  int evicted; //used for special random
 
   /**************** private fields *****************/
   // use cache->get_n_obj to obtain the number of objects in the cache

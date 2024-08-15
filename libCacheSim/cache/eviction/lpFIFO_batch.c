@@ -32,6 +32,8 @@ typedef struct {
 
   uint64_t prev_promote_time;
   uint64_t time_insert;
+
+  int num_promotion;
 } lpFIFO_batch_params_t;
 
 static const char *DEFAULT_PARAMS = "batch-size=0.2";
@@ -130,6 +132,7 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
  */
 static void lpFIFO_batch_free(cache_t *cache) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)(cache->eviction_params);
+  printf("total promotion: %d\n", params->num_promotion);
   free(params->buffer);
   free(cache->eviction_params);
   cache_struct_free(cache);
@@ -278,6 +281,7 @@ static void lpFIFO_batch_evict(cache_t *cache, const request_t *req) {
  */
 static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, uint64_t *buff, const uint64_t* start) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
+  params->num_promotion++;
   uint64_t pos = 0;
   uint64_t count = 0;
   if (*start > params->buffer_size) {
@@ -288,14 +292,22 @@ static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, uint6
   }
   uint64_t obj_to_promote = 0L;
 
+  // create an empty hash table because we don't want the duplicate objects
+  // to be promoted
+  hashtable_t *duplicate_table = create_hashtable(8);
+
   for (int i = 0; i < count; i++) {
     obj_to_promote = buff[pos % params->buffer_size];
     cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_to_promote);
-    if (obj != NULL) {
+    if (obj != NULL && hashtable_find_obj_id(duplicate_table, obj_to_promote) == NULL) {
+      hashtable_f_insert_obj(duplicate_table, obj);
       move_obj_to_head(&params->q_head, &params->q_tail, obj);
+      cache -> n_promotion += 1;
     }
     pos += 1;
   }
+
+  free_chained_hashtable_f(duplicate_table);
 }
 
 /**

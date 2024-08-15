@@ -21,7 +21,7 @@ typedef struct Belady_params {
   /* a priority queue recording the next access time */
   pqueue_t *pq;
 
-  uint64_t vtime; //just a counter
+  int64_t vtime; //just a counter
   uint64_t miss;
 } Belady_params_t;
 
@@ -154,13 +154,60 @@ static cache_obj_t *Belady_find(cache_t *cache, const request_t *req,
   }
 
   cached_obj->Belady.next_access_vtime = req->next_access_vtime;
+  // calculate the reuse distance again
+  double miss_ratio;
+  miss_ratio = (double)params->miss / (double)params->vtime;
+  double expected_reuse_distance = (double)cache -> cache_size / miss_ratio;
+
+  if (cached_obj->Belady.type == 1){
+    // I don' t think that can happen
+    assert(false);
+  }else if (cached_obj->Belady.type == 2) {
+    // check expected reuse distance
+    if ((int64_t) expected_reuse_distance < (cached_obj->Belady.next_access_vtime - params->vtime)) {
+      cached_obj -> Belady.type = 4;
+    }else{
+      cached_obj -> Belady.type = 5;
+    }
+  }else if (cached_obj->Belady.type == 3) {
+    // check expected reuse distance
+    // This in theory should not happen
+    if (cached_obj -> Belady.next_access_vtime == INT64_MAX) {
+      cached_obj -> Belady.type = 2;
+    }else{
+      if ((int64_t) expected_reuse_distance < (cached_obj->Belady.next_access_vtime - params->vtime)) {
+        cached_obj -> Belady.type = 4;
+      }else{
+        cached_obj -> Belady.type = 5;
+      }
+    }
+  }else if (cached_obj->Belady.type == 4) {
+    // check expected reuse distance
+    if (cached_obj -> Belady.next_access_vtime == INT64_MAX) {
+      cached_obj -> Belady.type = 2;
+    }else{
+      if ((int64_t) expected_reuse_distance >= (cached_obj->Belady.next_access_vtime - params->vtime)) {
+        cached_obj -> Belady.type = 5;
+      }
+    }
+  }else if (cached_obj->Belady.type == 5) {
+    // check expected reuse distance
+    if (cached_obj -> Belady.next_access_vtime == INT64_MAX) {
+      cached_obj -> Belady.type = 2;
+    }else{
+      if ((int64_t) expected_reuse_distance < (cached_obj->Belady.next_access_vtime - params->vtime)) {
+        cached_obj -> Belady.type = 4;
+      }
+    }
+  }
+
+  cached_obj ->Belady.freq ++;
   pqueue_pri_t pri = {.pri = req->next_access_vtime};
   pqueue_change_priority(params->pq, pri,
                          (pq_node_t *)(cached_obj->Belady.pq_node));
   DEBUG_ASSERT(
       ((pq_node_t *)hashtable_find(cache->hashtable, req)->Belady.pq_node)
           ->pri.pri == req->next_access_vtime);
-  cached_obj ->Belady.freq ++;
 
 #if defined(EVICT_IMMEDIATELY_IF_NO_FUTURE_ACCESS)
   if (req->next_access_vtime == INT64_MAX) {
@@ -183,6 +230,7 @@ static cache_obj_t *Belady_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *Belady_insert(cache_t *cache, const request_t *req) {
   Belady_params_t *params = cache->eviction_params;
+  params->miss ++;
 
   if (req->next_access_vtime == -1) {
     ERROR("next access time is -1, please use INT64_MAX instead\n");
@@ -197,6 +245,34 @@ static cache_obj_t *Belady_insert(cache_t *cache, const request_t *req) {
   cached_obj->Belady.pq_node = node;
   cached_obj->Belady.next_access_vtime = req->next_access_vtime;
   cached_obj->Belady.freq = 0;
+
+  double miss_ratio;
+  miss_ratio = (double)params->miss / (double)params->vtime;
+  double expected_reuse_distance = (double)cache -> cache_size / miss_ratio;
+
+  DEBUG_ASSERT(expected_reuse_distance >= 0 && expected_reuse_distance <= (double)INT64_MAX);
+  assert(expected_reuse_distance >= 0 && expected_reuse_distance <= (double)INT64_MAX);
+  int64_t reuse_distance = cached_obj->Belady.next_access_vtime - params->vtime;
+  assert(reuse_distance >= 0);
+
+  if ((cached_obj -> Belady.next_access_vtime == INT64_MAX) && (cached_obj -> Belady.freq == 0)) {
+    // first type
+    cached_obj -> Belady.type = 1;
+  } else if ((cached_obj -> Belady.next_access_vtime == INT64_MAX) && (cached_obj -> Belady.freq > 0)) {
+    // second type
+    cached_obj -> Belady.type = 2;
+  } else if (( (int64_t) expected_reuse_distance < reuse_distance) && (cached_obj -> Belady.freq == 0)) {
+    // third type
+    cached_obj -> Belady.type = 3;
+  } else if (( (int64_t) expected_reuse_distance < reuse_distance) && (cached_obj -> Belady.freq > 0)) {
+    // fourth type
+    cached_obj -> Belady.type = 4;
+  } else {
+    // DEBUG_ASSERT((int64_t) expected_reuse_distance >= reuse_distance);
+    assert((int64_t) expected_reuse_distance >= reuse_distance);
+    // this is the non one hit access
+    cached_obj -> Belady.type = 5;
+  }
 
   DEBUG_ASSERT(
       ((pq_node_t *)hashtable_find(cache->hashtable, req)->Belady.pq_node)
@@ -239,44 +315,26 @@ static cache_obj_t *Belady_to_evict(cache_t *cache, __attribute__((unused))
 static void Belady_evict(cache_t *cache,
                          __attribute__((unused)) const request_t *req) {
   Belady_params_t *params = cache->eviction_params;
-  params->miss ++;
   pq_node_t *node = (pq_node_t *)pqueue_pop(params->pq);
 
   cache_obj_t *obj_to_evict =
       hashtable_find_obj_id(cache->hashtable, node->obj_id);
   DEBUG_ASSERT(node == obj_to_evict->Belady.pq_node);
 
-  // we have four types of objects to check
-  // type1: the absolute one hit
-  // type2: the last hit of a many hit objects
-  // type3: the only hit beyond distance
-  // type4: the last of many hits beyond distance
-  double miss_ratio;
-  miss_ratio = (double)params->miss / (double)params->vtime;
-  double expected_reuse_distance = (double)cache -> cache_size / miss_ratio;
-
-  DEBUG_ASSERT(expected_reuse_distance >= 0 && expected_reuse_distance <= (double)INT64_MAX);
-  assert(expected_reuse_distance >= 0 && expected_reuse_distance <= (double)INT64_MAX);
-  int64_t reuse_distance = obj_to_evict->Belady.next_access_vtime - params->vtime;
-  assert(reuse_distance >= 0);
-
-  if ((obj_to_evict -> Belady.next_access_vtime == INT64_MAX) && (obj_to_evict -> Belady.freq == 0)) {
-    // first type
+  if (obj_to_evict-> Belady.type == 1) {
     cache -> type1 ++;
-  } else if ((obj_to_evict -> Belady.next_access_vtime == INT64_MAX) && (obj_to_evict -> Belady.freq > 0)) {
-    // second type
+  }else if (obj_to_evict -> Belady.type == 2) {
     cache -> type2 ++;
-  } else if (( (int64_t) expected_reuse_distance < reuse_distance) && (obj_to_evict -> Belady.freq == 0)) {
-    // third type
+  }else if (obj_to_evict -> Belady.type == 3) {
     cache -> type3 ++;
-  } else if (( (int64_t) expected_reuse_distance < reuse_distance) && (obj_to_evict -> Belady.freq > 0)) {
-    // fourth type
+  }else if (obj_to_evict -> Belady.type == 4) {
     cache -> type4 ++;
-  } else {
-    // DEBUG_ASSERT((int64_t) expected_reuse_distance >= reuse_distance);
-    assert((int64_t) expected_reuse_distance >= reuse_distance);
-    // this is the non one hit access
+  }else if (obj_to_evict -> Belady.type == 5) {
     cache -> type5 ++;
+  }else{
+    // should not be the case
+    printf("error in belady type\n");
+    assert(false);
   }
   obj_to_evict->Belady.pq_node = NULL;
   my_free(sizeof(pq_node_t), node);

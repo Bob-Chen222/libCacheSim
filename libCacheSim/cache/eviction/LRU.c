@@ -76,6 +76,7 @@ cache_t *LRU_init(const common_cache_params_t ccache_params,
   LRU_params_t *params = malloc(sizeof(LRU_params_t));
   params->q_head = NULL;
   params->q_tail = NULL;
+  params->n_promotion = 0;
   cache->eviction_params = params;
 
   return cache;
@@ -86,7 +87,11 @@ cache_t *LRU_init(const common_cache_params_t ccache_params,
  *
  * @param cache
  */
-static void LRU_free(cache_t *cache) { cache_struct_free(cache); }
+static void LRU_free(cache_t *cache) { 
+  LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
+  printf("LRU promotion: %d\n", params->n_promotion);
+  cache_struct_free(cache); 
+}
 
 /**
  * @brief this function is the user facing API
@@ -139,6 +144,8 @@ static cache_obj_t *LRU_find(cache_t *cache, const request_t *req,
 #endif
       
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
+      cache -> n_promotion++;
+      params -> n_promotion++;
   }
   return cache_obj;
 }

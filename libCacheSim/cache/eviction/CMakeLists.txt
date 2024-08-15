@@ -27,8 +27,10 @@ set(sourceC
         Size.c
         LRUProb.c
         LRUdelay.c
+        LRUdelayv1.c
         QDLP.c
         nop.c
+        bc.c
 
         FIFO_Merge.c
         FIFO_Reinsertion.c

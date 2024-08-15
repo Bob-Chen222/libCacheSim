@@ -64,12 +64,13 @@ int main(int argc, char **argv) {
   for (int i = 0; i < args.n_cache_size * args.n_eviction_algo; i++) {
     snprintf(output_str, 1024,
              "%s %32s cache size %8ld%s, %lld req, miss ratio %.4lf, byte miss "
-             "ratio %.4lf\n",
+             "ratio %.4lf %8ld %.4lf %8ld %8ld %8ld %8ld %8ld\n",
              output_filename, result[i].cache_name,
              (long)(result[i].cache_size / size_unit), size_unit_str,
              (long long)result[i].n_req,
              (double)result[i].n_miss / (double)result[i].n_req,
-             (double)result[i].n_miss_byte / (double)result[i].n_req_byte);
+             (double)result[i].n_miss_byte / (double)result[i].n_req_byte, result[i].n_promotion, result[i].mean_stay_time,
+             result[i].type1, result[i].type2, result[i].type3, result[i].type4, result[i].type5);
     printf("%s", output_str);
     fprintf(output_file, "%s", output_str);
   }

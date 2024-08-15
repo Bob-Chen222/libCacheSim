@@ -23,6 +23,7 @@ typedef struct lpLRU_prob_params_t {
   cache_obj_t *q_tail;
   float prob; // prob that the object is promoted
   pthread_spinlock_t lock;
+  cache_obj_t *hand;
 } lpLRU_prob_params_t;
 
 static const char *DEFAULT_CACHE_PARAMS = "prob=0.5";
@@ -88,6 +89,7 @@ cache_t *lpLRU_prob_init(const common_cache_params_t ccache_params,
   lpLRU_prob_params_t *params = cache->eviction_params;
   params->q_head = NULL;
   params->q_tail = NULL;
+  params->hand = NULL;
 
   lpLRU_prob_parse_params(cache, DEFAULT_CACHE_PARAMS);
   if (cache_specific_params != NULL) {
@@ -152,7 +154,6 @@ static cache_obj_t *lpLRU_prob_find(cache_t *cache, const request_t *req,
   cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
 
   float dice = (float)rand()/(float)(RAND_MAX); // generates random float between 0 and 1
-  // if (params->prob) printf("prob param %f: ", params->prob);
   if (dice >= params->prob) return cache_obj;
 
   if (cache_obj && likely(update_cache)) {
@@ -160,7 +161,11 @@ static cache_obj_t *lpLRU_prob_find(cache_t *cache, const request_t *req,
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)
 #endif
+      if (cache_obj == params->hand){
+        params->hand = cache_obj->queue.prev;
+      }
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
+      cache -> n_promotion ++;
   }
   return cache_obj;
 }
@@ -179,7 +184,10 @@ static cache_obj_t *lpLRU_prob_insert(cache_t *cache, const request_t *req) {
   lpLRU_prob_params_t *params = (lpLRU_prob_params_t *)cache->eviction_params;
 
   cache_obj_t *obj = cache_insert_base(cache, req);
+  obj->LRUProb.freq = 0;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
+  // insert it after the hand
+
 
   return obj;
 }

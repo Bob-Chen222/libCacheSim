@@ -176,6 +176,61 @@ void move_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
   *head = cache_obj;
 }
 
+void delay_move_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
+                      cache_obj_t *cache_obj) {
+  DEBUG_ASSERT(head != NULL);
+
+  if (tail != NULL && *head == *tail) {
+    // the list only has one element
+    DEBUG_ASSERT(cache_obj == *head);
+    DEBUG_ASSERT(cache_obj->queue.next == NULL);
+    DEBUG_ASSERT(cache_obj->queue.prev == NULL);
+    return;
+  }
+
+  if (cache_obj == *head) {
+    // already at head
+    return;
+  }
+
+  if (tail != NULL && cache_obj == *tail) {
+    // change tail
+    cache_obj->queue.prev->queue.next = cache_obj->queue.next;
+    *tail = cache_obj->queue.prev;
+
+    // move to head
+    (*head)->queue.prev = cache_obj;
+    cache_obj->queue.prev = NULL;
+    cache_obj->queue.next = *head;
+    *head = cache_obj;
+    return;
+  }
+
+  // bridge list_prev and next
+  cache_obj->queue.prev->queue.next = cache_obj->queue.next;
+  cache_obj->queue.next->queue.prev = cache_obj->queue.prev;
+
+  // handle current head
+  (*head)->queue.prev = cache_obj;
+
+  // handle this moving object
+  cache_obj->queue.prev = NULL;
+  cache_obj->queue.next = *head;
+
+  // handle head
+  *head = cache_obj;
+}
+
+int dist_marker_tail(cache_obj_t *marker, cache_obj_t *tail){
+  int dist = 0;
+  cache_obj_t *tmp = marker;
+  while (tmp != tail){
+    dist++;
+    tmp = tmp->queue.next;
+  }
+  return dist;
+}
+
 /**
  * prepend the object to the head of the doubly linked list
  * the object is not in the list, otherwise, use move_obj_to_head
@@ -202,6 +257,55 @@ void prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail,
   }
 
   *head = cache_obj;
+}
+
+/**
+ * prepend the object to the head of the doubly linked list
+ * the object is not in the list, otherwise, use move_obj_to_head
+ * @param head
+ * @param tail
+ * @param cache_obj
+ */
+void delay_prepend_obj_to_head(cache_obj_t **head, cache_obj_t **tail, cache_obj_t **marker,
+                         cache_obj_t *cache_obj) {
+  assert(head != NULL);
+  assert(marker != NULL);
+
+  cache_obj_t *marker_back = NULL;
+
+  cache_obj->queue.prev = NULL;
+  cache_obj->queue.next = *marker;
+
+  if (tail != NULL && *tail == NULL) {
+    // the list is empty
+    DEBUG_ASSERT(*marker == NULL);
+    *tail = cache_obj;
+    *head = cache_obj;
+    *marker = cache_obj;
+  }else if (*head == *marker){
+    // this shows that head should also be update to be the front of the whole list
+    *head = cache_obj;
+  }else{
+    marker_back = (*marker) -> queue.prev;
+    DEBUG_ASSERT(marker_back != NULL);
+  }
+
+  if (*marker != NULL) {
+    // the list has at least one element
+    (*marker)->queue.prev = cache_obj;
+    // we need to udpate marker_back accordingly
+    if (marker_back != NULL){
+      marker_back->queue.next = cache_obj;
+      cache_obj -> queue.prev = marker_back;
+    }
+  }
+
+  *marker = cache_obj;
+  DEBUG_ASSERT(*head != NULL);
+  if (marker_back != NULL){
+    DEBUG_ASSERT(marker_back->queue.next == cache_obj);
+    DEBUG_ASSERT(cache_obj->queue.prev == marker_back);
+  }
 }
 
 /**

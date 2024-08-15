@@ -137,6 +137,10 @@ static inline cache_t *create_cache(const char *trace_path,
     cache = Sieve_Belady_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "s3lru") == 0) {
     cache = S3LRU_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "bc") == 0) {
+    cache = bc_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "lru-delayv1") == 0) {
+    cache = LRU_delayv1_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "s3fifo") == 0 ||
              strcasecmp(eviction_algo, "s3-fifo") == 0) {
     cache = S3FIFO_init(cc_params, eviction_params);

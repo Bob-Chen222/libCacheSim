@@ -295,14 +295,15 @@ static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, uint6
   // create an empty hash table because we don't want the duplicate objects
   // to be promoted
   hashtable_t *duplicate_table = create_hashtable(8);
-
   for (int i = 0; i < count; i++) {
     obj_to_promote = buff[pos % params->buffer_size];
     cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_to_promote);
-    if (obj != NULL && hashtable_find_obj_id(duplicate_table, obj_to_promote) == NULL) {
-      hashtable_f_insert_obj(duplicate_table, obj);
+    if (obj != NULL) {
       move_obj_to_head(&params->q_head, &params->q_tail, obj);
-      cache -> n_promotion += 1;
+      if (hashtable_find_obj_id(duplicate_table, obj_to_promote) == NULL){
+        hashtable_f_insert_obj(duplicate_table, obj);
+        cache -> n_promotion += 1;
+      }
     }
     pos += 1;
   }

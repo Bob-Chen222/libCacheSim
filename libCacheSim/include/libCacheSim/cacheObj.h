@@ -28,7 +28,15 @@ typedef struct {
 typedef struct {
   int freq;
   int64_t next_access_vtime;
+  int64_t check_time;
 } Clock_obj_metadata_t;
+
+typedef struct {
+  int freq; //if freq is 0 at eviction, definitly evict it because no matter what scaler we assume it will be evicted
+  int64_t last_access_vtime; //the request time since its last hit or insertion
+  int64_t check_time; //next time to check if the object is evicted
+  double scale;
+} PredClock_obj_metadata_t;
 
 typedef struct {
   int freq;
@@ -188,6 +196,7 @@ typedef struct cache_obj {
   union {
     LFU_obj_metadata_t lfu;          // for LFU
     Clock_obj_metadata_t clock;      // for Clock
+    PredClock_obj_metadata_t predClock; // for PredClock
     bc_obj_metadata_t bc;      // for bc
     Size_obj_metadata_t Size;        // for Size
     ARC_obj_metadata_t ARC;          // for ARC

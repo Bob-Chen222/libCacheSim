@@ -9,6 +9,7 @@ set(sourceC
         FIFO.c
         LRU.c
         Clock.c
+        pred_clock.c
         SLRU.c
         SLRUv0.c
         CR_LFU.c

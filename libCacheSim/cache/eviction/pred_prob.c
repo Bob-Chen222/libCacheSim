@@ -2,7 +2,7 @@
 //  lp version of lru
 //  achieved through probabilistic promotion
 //
-//  lpLRU_prob.c
+//  PredProb.c
 //  libCacheSim
 //
 //  Created by Juncheng on 12/4/18.
@@ -18,12 +18,11 @@ extern "C" {
 
 // #define USE_BELADY
 
-typedef struct lpLRU_prob_params_t {
+typedef struct PredProb_params_t {
   cache_obj_t *q_head;
   cache_obj_t *q_tail;
   float prob; // prob that the object is promoted
-  pthread_spinlock_t lock;
-} lpLRU_prob_params_t;
+} PredProb_params_t;
 
 static const char *DEFAULT_CACHE_PARAMS = "prob=0.5";
 
@@ -33,17 +32,17 @@ static const char *DEFAULT_CACHE_PARAMS = "prob=0.5";
 // ****                                                               ****
 // ***********************************************************************
 
-static void lpLRU_prob_parse_params(cache_t *cache,
+static void PredProb_parse_params(cache_t *cache,
                                const char *cache_specific_params);
-static void lpLRU_prob_free(cache_t *cache);
-static bool lpLRU_prob_get(cache_t *cache, const request_t *req);
-static cache_obj_t *lpLRU_prob_find(cache_t *cache, const request_t *req,
+static void PredProb_free(cache_t *cache);
+static bool PredProb_get(cache_t *cache, const request_t *req);
+static cache_obj_t *PredProb_find(cache_t *cache, const request_t *req,
                              const bool update_cache);
-static cache_obj_t *lpLRU_prob_insert(cache_t *cache, const request_t *req);
-static cache_obj_t *lpLRU_prob_to_evict(cache_t *cache, const request_t *req);
-static void lpLRU_prob_evict(cache_t *cache, const request_t *req);
-static bool lpLRU_prob_remove(cache_t *cache, const obj_id_t obj_id);
-static void lpLRU_prob_print_cache(const cache_t *cache);
+static cache_obj_t *PredProb_insert(cache_t *cache, const request_t *req);
+static cache_obj_t *PredProb_to_evict(cache_t *cache, const request_t *req);
+static void PredProb_evict(cache_t *cache, const request_t *req);
+static bool PredProb_remove(cache_t *cache, const obj_id_t obj_id);
+static void PredProb_print_cache(const cache_t *cache);
 
 // ***********************************************************************
 // ****                                                               ****
@@ -52,26 +51,26 @@ static void lpLRU_prob_print_cache(const cache_t *cache);
 // ****                       init, free, get                         ****
 // ***********************************************************************
 /**
- * @brief initialize a lpLRU_prob cache
+ * @brief initialize a PredProb cache
  *
  * @param ccache_params some common cache parameters
- * @param cache_specific_params lpLRU_prob specific parameters, should be NULL
+ * @param cache_specific_params PredProb specific parameters, should be NULL
  */
-cache_t *lpLRU_prob_init(const common_cache_params_t ccache_params,
+cache_t *PredProb_init(const common_cache_params_t ccache_params,
                   const char *cache_specific_params) {
-  cache_t *cache = cache_struct_init("lpLRU_prob", ccache_params, cache_specific_params);
-  cache->cache_init = lpLRU_prob_init;
-  cache->cache_free = lpLRU_prob_free;
-  cache->get = lpLRU_prob_get;
-  cache->find = lpLRU_prob_find;
-  cache->insert = lpLRU_prob_insert;
-  cache->evict = lpLRU_prob_evict;
-  cache->remove = lpLRU_prob_remove;
-  cache->to_evict = lpLRU_prob_to_evict;
+  cache_t *cache = cache_struct_init("PredProb", ccache_params, cache_specific_params);
+  cache->cache_init = PredProb_init;
+  cache->cache_free = PredProb_free;
+  cache->get = PredProb_get;
+  cache->find = PredProb_find;
+  cache->insert = PredProb_insert;
+  cache->evict = PredProb_evict;
+  cache->remove = PredProb_remove;
+  cache->to_evict = PredProb_to_evict;
   cache->get_occupied_byte = cache_get_occupied_byte_default;
   cache->can_insert = cache_can_insert_default;
   cache->get_n_obj = cache_get_n_obj_default;
-  cache->print_cache = lpLRU_prob_print_cache;
+  cache->print_cache = PredProb_print_cache;
 
   if (ccache_params.consider_obj_metadata) {
     cache->obj_md_size = 8 * 2;
@@ -80,21 +79,21 @@ cache_t *lpLRU_prob_init(const common_cache_params_t ccache_params,
   }
 
 #ifdef USE_BELADY
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "lpLRU_prob_Belady");
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "PredProb_Belady");
 #endif
 
-  cache->eviction_params = malloc(sizeof(lpLRU_prob_params_t));
-  memset(cache->eviction_params, 0, sizeof(lpLRU_prob_params_t));
-  lpLRU_prob_params_t *params = cache->eviction_params;
+  cache->eviction_params = malloc(sizeof(PredProb_params_t));
+  memset(cache->eviction_params, 0, sizeof(PredProb_params_t));
+  PredProb_params_t *params = cache->eviction_params;
   params->q_head = NULL;
   params->q_tail = NULL;
 
-  lpLRU_prob_parse_params(cache, DEFAULT_CACHE_PARAMS);
+  PredProb_parse_params(cache, DEFAULT_CACHE_PARAMS);
   if (cache_specific_params != NULL) {
-    lpLRU_prob_parse_params(cache, cache_specific_params);
+    PredProb_parse_params(cache, cache_specific_params);
   }
 
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "lpLRU_prob-%.4f",
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "PredProb-%.4f",
              params->prob);
 
   return cache;
@@ -105,7 +104,7 @@ cache_t *lpLRU_prob_init(const common_cache_params_t ccache_params,
  *
  * @param cache
  */
-static void lpLRU_prob_free(cache_t *cache) { cache_struct_free(cache); }
+static void PredProb_free(cache_t *cache) { cache_struct_free(cache); }
 
 /**
  * @brief this function is the user facing API
@@ -126,7 +125,7 @@ static void lpLRU_prob_free(cache_t *cache) { cache_struct_free(cache); }
  * @param req
  * @return true if cache hit, false if cache miss
  */
-static bool lpLRU_prob_get(cache_t *cache, const request_t *req) {
+static bool PredProb_get(cache_t *cache, const request_t *req) {
   return cache_get_base(cache, req);
 }
 
@@ -146,21 +145,27 @@ static bool lpLRU_prob_get(cache_t *cache, const request_t *req) {
  *  and if the object is expired, it is removed from the cache
  * @return true on hit, false on miss
  */
-static cache_obj_t *lpLRU_prob_find(cache_t *cache, const request_t *req,
+static cache_obj_t *PredProb_find(cache_t *cache, const request_t *req,
                              const bool update_cache) {
-  lpLRU_prob_params_t *params = (lpLRU_prob_params_t *)cache->eviction_params;
+  PredProb_params_t *params = (PredProb_params_t *)cache->eviction_params;
   cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
 
   float dice = (float)rand()/(float)(RAND_MAX); // generates random float between 0 and 1
-  if (dice >= params->prob) return cache_obj;
+  if (cache_obj && dice >= cache_obj -> LRUProb.scaler) {
+    // cache_obj -> LRUProb.scaler = cache_obj -> LRUProb.scaler - params -> prob;
+    // cache_obj -> LRUProb.freq ++;
+    return cache_obj;
+  }
 
   if (cache_obj && likely(update_cache)) {
-    /* lpLRU_prob_head is the newest, move cur obj to lpLRU_prob_head */
+    /* PredProb_head is the newest, move cur obj to PredProb_head */
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)
 #endif
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
       cache -> n_promotion ++;
+      cache_obj -> LRUProb.scaler = cache_obj -> LRUProb.scaler * params -> prob;
+      cache_obj -> LRUProb.freq ++;
   }
   return cache_obj;
 }
@@ -175,11 +180,12 @@ static cache_obj_t *lpLRU_prob_find(cache_t *cache, const request_t *req,
  * @param req
  * @return the inserted object
  */
-static cache_obj_t *lpLRU_prob_insert(cache_t *cache, const request_t *req) {
-  lpLRU_prob_params_t *params = (lpLRU_prob_params_t *)cache->eviction_params;
+static cache_obj_t *PredProb_insert(cache_t *cache, const request_t *req) {
+  PredProb_params_t *params = (PredProb_params_t *)cache->eviction_params;
 
   cache_obj_t *obj = cache_insert_base(cache, req);
   obj->LRUProb.freq = 0;
+  obj->LRUProb.scaler = 1.0;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
 
@@ -196,8 +202,8 @@ static cache_obj_t *lpLRU_prob_insert(cache_t *cache, const request_t *req) {
  * @param cache the cache
  * @return the object to be evicted
  */
-static cache_obj_t *lpLRU_prob_to_evict(cache_t *cache, const request_t *req) {
-  lpLRU_prob_params_t *params = (lpLRU_prob_params_t *)cache->eviction_params;
+static cache_obj_t *PredProb_to_evict(cache_t *cache, const request_t *req) {
+  PredProb_params_t *params = (PredProb_params_t *)cache->eviction_params;
 
   DEBUG_ASSERT(params->q_tail != NULL || cache->occupied_byte == 0);
 
@@ -213,8 +219,8 @@ static cache_obj_t *lpLRU_prob_to_evict(cache_t *cache, const request_t *req) {
  * @param cache
  * @param req not used
  */
-static void lpLRU_prob_evict(cache_t *cache, const request_t *req) {
-  lpLRU_prob_params_t *params = (lpLRU_prob_params_t *)cache->eviction_params;
+static void PredProb_evict(cache_t *cache, const request_t *req) {
+  PredProb_params_t *params = (PredProb_params_t *)cache->eviction_params;
   cache_obj_t *obj_to_evict = params->q_tail;
   DEBUG_ASSERT(params->q_tail != NULL);
 
@@ -255,10 +261,10 @@ static void lpLRU_prob_evict(cache_t *cache, const request_t *req) {
  * @param cache
  * @param obj
  */
-static void lpLRU_prob_remove_obj(cache_t *cache, cache_obj_t *obj) {
+static void PredProb_remove_obj(cache_t *cache, cache_obj_t *obj) {
   assert(obj != NULL);
 
-  lpLRU_prob_params_t *params = (lpLRU_prob_params_t *)cache->eviction_params;
+  PredProb_params_t *params = (PredProb_params_t *)cache->eviction_params;
 
   remove_obj_from_list(&params->q_head, &params->q_tail, obj);
   cache_remove_obj_base(cache, obj, true);
@@ -277,12 +283,12 @@ static void lpLRU_prob_remove_obj(cache_t *cache, cache_obj_t *obj) {
  * @return true if the object is removed, false if the object is not in the
  * cache
  */
-static bool lpLRU_prob_remove(cache_t *cache, const obj_id_t obj_id) {
+static bool PredProb_remove(cache_t *cache, const obj_id_t obj_id) {
   cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_id);
   if (obj == NULL) {
     return false;
   }
-  lpLRU_prob_params_t *params = (lpLRU_prob_params_t *)cache->eviction_params;
+  PredProb_params_t *params = (PredProb_params_t *)cache->eviction_params;
 
   remove_obj_from_list(&params->q_head, &params->q_tail, obj);
   cache_remove_obj_base(cache, obj, true);
@@ -290,8 +296,8 @@ static bool lpLRU_prob_remove(cache_t *cache, const obj_id_t obj_id) {
   return true;
 }
 
-static void lpLRU_prob_print_cache(const cache_t *cache) {
-  lpLRU_prob_params_t *params = (lpLRU_prob_params_t *)cache->eviction_params;
+static void PredProb_print_cache(const cache_t *cache) {
+  PredProb_params_t *params = (PredProb_params_t *)cache->eviction_params;
   cache_obj_t *cur = params->q_head;
   // print from the most recent to the least recent
   if (cur == NULL) {
@@ -310,15 +316,15 @@ static void lpLRU_prob_print_cache(const cache_t *cache) {
 // ****                parameter set up functions                     ****
 // ****                                                               ****
 // ***********************************************************************
-static const char *lpLRU_prob_current_params(lpLRU_prob_params_t *params) {
+static const char *PredProb_current_params(PredProb_params_t *params) {
   static __thread char params_str[128];
   snprintf(params_str, 128, "n-seg=%f\n", params->prob);
   return params_str;
 }
 
-static void lpLRU_prob_parse_params(cache_t *cache,
+static void PredProb_parse_params(cache_t *cache,
                                 const char *cache_specific_params) {
-  lpLRU_prob_params_t *params = (lpLRU_prob_params_t *)cache->eviction_params;
+  PredProb_params_t *params = (PredProb_params_t *)cache->eviction_params;
   char *params_str = strdup(cache_specific_params);
   char *old_params_str = params_str;
   char *end;
@@ -337,7 +343,7 @@ static void lpLRU_prob_parse_params(cache_t *cache,
     if (strcasecmp(key, "prob") == 0) {
       params->prob = (float)strtod(value, NULL);
     } else if (strcasecmp(key, "print") == 0) {
-      printf("current parameters: %s\n", lpLRU_prob_current_params(params));
+      printf("current parameters: %s\n", PredProb_current_params(params));
       exit(0);
     } else {
       ERROR("%s does not have parameter %s\n", cache->cache_name, key);

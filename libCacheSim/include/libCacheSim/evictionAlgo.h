@@ -54,6 +54,21 @@ typedef struct {
 
   int64_t miss;
   int64_t vtime;
+} BeladyClock_params_t;
+
+typedef struct {
+  cache_obj_t *q_head;
+  cache_obj_t *q_tail;
+  // clock uses one-bit counter
+  int n_bit_counter;
+  // max_freq = 1 << (n_bit_counter - 1)
+  int max_freq;
+
+  int64_t n_obj_rewritten;
+  int64_t n_byte_rewritten;
+
+  int64_t miss;
+  int64_t vtime;
   double scaler; //used for simulating the popularity decay
 } PredClock_params_t;
 
@@ -74,6 +89,9 @@ cache_t *Cacheus_init(const common_cache_params_t ccache_params,
 
 cache_t *Clock_init(const common_cache_params_t ccache_params,
                     const char *cache_specific_params);
+
+cache_t *BeladyClock_init(const common_cache_params_t ccache_params,
+                          const char *cache_specific_params);
 
 cache_t *PredClock_init(const common_cache_params_t ccache_params,
                         const char *cache_specific_params);

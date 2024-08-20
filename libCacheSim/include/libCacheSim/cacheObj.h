@@ -35,6 +35,7 @@ typedef struct {
   int freq; //if freq is 0 at eviction, definitly evict it because no matter what scaler we assume it will be evicted
   int64_t last_access_vtime; //the request time since its last hit or insertion
   int64_t check_time; //next time to check if the object is evicted
+  int64_t reuse_dst; //reuse distance
   double scale;
 } PredClock_obj_metadata_t;
 

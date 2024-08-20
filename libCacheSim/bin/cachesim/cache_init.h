@@ -107,6 +107,8 @@ static inline cache_t *create_cache(const char *trace_path,
              strcasecmp(eviction_algo, "clock") == 0 ||
              strcasecmp(eviction_algo, "second-chance") == 0) {
     cache = Clock_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "beladyclock") == 0) {
+    cache = BeladyClock_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "predclock") == 0) {
     cache = PredClock_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "cr-lfu") == 0) {

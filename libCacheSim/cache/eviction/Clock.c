@@ -145,13 +145,11 @@ static bool Clock_get(cache_t *cache, const request_t *req) {
 static cache_obj_t *Clock_find(cache_t *cache, const request_t *req,
                                const bool update_cache) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-  params->vtime += 1;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
     if (obj->clock.freq < params->max_freq) {
       obj->clock.freq += 1;
     }
-    obj->clock.next_access_vtime = req->next_access_vtime;
 #ifdef USE_BELADY
     obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -172,10 +170,8 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-  params ->miss += 1;
 
   cache_obj_t *obj = cache_insert_base(cache, req);
-  obj->clock.next_access_vtime = req->next_access_vtime;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
   obj->clock.freq = 0;
@@ -227,32 +223,15 @@ static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
  */
 static void Clock_evict(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-  double miss_ratio;
-  miss_ratio = (double)params->miss / (double)params->vtime;
-  double expected_reuse_distance = (double)cache -> cache_size / miss_ratio;
 
   cache_obj_t *obj_to_evict = params->q_tail;
-  int64_t reuse_distance = 0L;
-  int64_t n_round = 0;
-  if (obj_to_evict -> clock.next_access_vtime != INT64_MAX) {
-    reuse_distance = obj_to_evict->clock.next_access_vtime - params->vtime;
-  }else{
-    reuse_distance = INT64_MAX;
-  }
-  while (reuse_distance != INT64_MAX && reuse_distance <= expected_reuse_distance) {
-    if (obj_to_evict -> clock.check_time == params->vtime) {
-      // printf("check time reached\n");
-      break;
-    }
+  while (obj_to_evict->clock.freq >= 1) {
     obj_to_evict->clock.freq -= 1;
     params->n_obj_rewritten += 1;
     params->n_byte_rewritten += obj_to_evict->obj_size;
     move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
-    cache->n_promotion += 1;
-    obj_to_evict->clock.check_time = params->vtime;
+    cache -> n_promotion += 1;
     obj_to_evict = params->q_tail;
-    reuse_distance = obj_to_evict->clock.next_access_vtime - params->vtime;
-    printf("promotion: %d\n", cache->n_promotion);
   }
 
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
@@ -348,7 +327,7 @@ static void Clock_parse_params(cache_t *cache,
       printf("current parameters: %s\n", Clock_current_params(cache, params));
       exit(0);
     } else {
-      ERROR("%s does not have parameter %s, example parameters %s\n",
+      ERROR("%s does not have parameter %s, example paramters %s\n",
             cache->cache_name, key, Clock_current_params(cache, params));
       exit(1);
     }

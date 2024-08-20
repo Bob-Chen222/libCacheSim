@@ -17,7 +17,7 @@ extern "C" {
 // #define USE_BELADY
 #undef USE_BELADY
 
-static const char *DEFAULT_PARAMS = "scaler=1.0";
+static const char *DEFAULT_PARAMS = "scaler=1.5";
 
 // ***********************************************************************
 // ****                                                               ****

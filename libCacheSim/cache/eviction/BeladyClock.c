@@ -239,7 +239,7 @@ static void BeladyClock_evict(cache_t *cache, const request_t *req) {
   }else{
     reuse_distance = INT64_MAX;
   }
-  while (reuse_distance != INT64_MAX && reuse_distance <= expected_reuse_distance) {
+  while (obj_to_evict->clock.freq != 0 && reuse_distance != INT64_MAX && reuse_distance <= expected_reuse_distance) {
     if (obj_to_evict -> clock.check_time == params->vtime) {
       // printf("check time reached\n");
       break;

@@ -158,6 +158,7 @@ typedef struct {
 
 typedef struct {
   int64_t freq;
+  float scaler;
 } LRUProb_obj_metadata_t;
 
 typedef struct {

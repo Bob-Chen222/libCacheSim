@@ -171,6 +171,9 @@ cache_t *flashProb_init(const common_cache_params_t ccache_params,
 cache_t *LRU_Prob_init(const common_cache_params_t ccache_params,
                        const char *cache_specific_params);
 
+cache_t *PredProb_init(const common_cache_params_t ccache_params,
+                        const char *cache_specific_params);
+
 cache_t *SFIFOv0_init(const common_cache_params_t ccache_params,
                       const char *cache_specific_params);
 

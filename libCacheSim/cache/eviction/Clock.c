@@ -232,8 +232,18 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
   double expected_reuse_distance = (double)cache -> cache_size / miss_ratio;
 
   cache_obj_t *obj_to_evict = params->q_tail;
-  int64_t reuse_distance = obj_to_evict->clock.next_access_vtime - params->vtime;
-  while (reuse_distance != INT64_MAX && reuse_distance <= expected_reuse_distance && obj_to_evict->clock.check_time != params->vtime) {
+  int64_t reuse_distance = 0L;
+  int64_t n_round = 0;
+  if (obj_to_evict -> clock.next_access_vtime != INT64_MAX) {
+    reuse_distance = obj_to_evict->clock.next_access_vtime - params->vtime;
+  }else{
+    reuse_distance = INT64_MAX;
+  }
+  while (reuse_distance != INT64_MAX && reuse_distance <= expected_reuse_distance) {
+    if (obj_to_evict -> clock.check_time == params->vtime) {
+      // printf("check time reached\n");
+      break;
+    }
     obj_to_evict->clock.freq -= 1;
     params->n_obj_rewritten += 1;
     params->n_byte_rewritten += obj_to_evict->obj_size;
@@ -242,6 +252,7 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
     obj_to_evict->clock.check_time = params->vtime;
     obj_to_evict = params->q_tail;
     reuse_distance = obj_to_evict->clock.next_access_vtime - params->vtime;
+    printf("promotion: %d\n", cache->n_promotion);
   }
 
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);

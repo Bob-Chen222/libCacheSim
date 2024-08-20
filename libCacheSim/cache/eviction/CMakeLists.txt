@@ -27,6 +27,7 @@ set(sourceC
         WTinyLFU.c
         Size.c
         LRUProb.c
+        pred_prob.c
         LRUdelay.c
         LRUdelayv1.c
         QDLP.c

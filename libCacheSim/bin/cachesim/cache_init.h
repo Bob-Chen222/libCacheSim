@@ -131,6 +131,8 @@ static inline cache_t *create_cache(const char *trace_path,
     cache = lpLRU_prob_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lru-delay") == 0) {
     cache = LRU_delay_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "preddelay") == 0) {
+    cache = PredDelay_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lru-probv0") == 0) {
     cache = lpLRU_prob_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "predprob") == 0) {

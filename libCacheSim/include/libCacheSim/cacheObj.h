@@ -109,6 +109,7 @@ typedef struct {
 typedef struct {
   uint64_t last_vtime;
   int freq;
+  float scaler;
 }delay_obj_metadata_t;
 
 typedef struct {

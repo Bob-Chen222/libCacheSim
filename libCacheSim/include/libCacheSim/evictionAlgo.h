@@ -228,6 +228,9 @@ cache_t *Sieve_init(const common_cache_params_t ccache_params,
 cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
                         const char *cache_specific_params);
 
+cache_t *PredDelay_init(const common_cache_params_t ccache_params,
+                        const char *cache_specific_params);
+
 cache_t *LRU_delayv1_init(const common_cache_params_t ccache_params,
                            const char *cache_specific_params);
 

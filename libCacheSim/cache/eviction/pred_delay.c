@@ -20,9 +20,9 @@ typedef struct {
   float delay_ratio;
   uint64_t vtime;
   int n_promotion;
-} LRU_delay_params_t;
+} PredDelay_params_t;
 
-static const char *DEFAULT_PARAMS = "delay-time=1";
+static const char *DEFAULT_PARAMS = "delay-time=0.1";
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -35,15 +35,15 @@ extern "C" {
 // ****                                                               ****
 // ***********************************************************************
 
-static void LRU_delay_parse_params(cache_t *cache, const char *cache_specific_params);
-static void LRU_delay_free(cache_t *cache);
-static bool LRU_delay_get(cache_t *cache, const request_t *req);
-static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
+static void PredDelay_parse_params(cache_t *cache, const char *cache_specific_params);
+static void PredDelay_free(cache_t *cache);
+static bool PredDelay_get(cache_t *cache, const request_t *req);
+static cache_obj_t *PredDelay_find(cache_t *cache, const request_t *req,
                              const bool update_cache);
-static cache_obj_t *LRU_delay_insert(cache_t *cache, const request_t *req);
-static cache_obj_t *LRU_delay_to_evict(cache_t *cache, const request_t *req);
-static void LRU_delay_evict(cache_t *cache, const request_t *req);
-static bool LRU_delay_remove(cache_t *cache, const obj_id_t obj_id);
+static cache_obj_t *PredDelay_insert(cache_t *cache, const request_t *req);
+static cache_obj_t *PredDelay_to_evict(cache_t *cache, const request_t *req);
+static void PredDelay_evict(cache_t *cache, const request_t *req);
+static bool PredDelay_remove(cache_t *cache, const obj_id_t obj_id);
 
 // ***********************************************************************
 // ****                                                               ****
@@ -57,17 +57,17 @@ static bool LRU_delay_remove(cache_t *cache, const obj_id_t obj_id);
  * @param ccache_params some common cache parameters
  * @param cache_specific_params LRU specific parameters, should be NULL
  */
-cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
+cache_t *PredDelay_init(const common_cache_params_t ccache_params,
                   const char *cache_specific_params) {
-  cache_t *cache = cache_struct_init("LRU_delay", ccache_params, cache_specific_params);
-  cache->cache_init = LRU_delay_init;
-  cache->cache_free = LRU_delay_free;
-  cache->get = LRU_delay_get;
-  cache->find = LRU_delay_find;
-  cache->insert = LRU_delay_insert;
-  cache->evict = LRU_delay_evict;
-  cache->remove = LRU_delay_remove;
-  cache->to_evict = LRU_delay_to_evict;
+  cache_t *cache = cache_struct_init("PredDelay", ccache_params, cache_specific_params);
+  cache->cache_init = PredDelay_init;
+  cache->cache_free = PredDelay_free;
+  cache->get = PredDelay_get;
+  cache->find = PredDelay_find;
+  cache->insert = PredDelay_insert;
+  cache->evict = PredDelay_evict;
+  cache->remove = PredDelay_remove;
+  cache->to_evict = PredDelay_to_evict;
   cache->get_occupied_byte = cache_get_occupied_byte_default;
 
   if (ccache_params.consider_obj_metadata) {
@@ -80,7 +80,7 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "LRU_Belady");
 #endif
 
-  LRU_delay_params_t *params = malloc(sizeof(LRU_delay_params_t));
+  PredDelay_params_t *params = malloc(sizeof(PredDelay_params_t));
   params->q_head = NULL;
   params->q_tail = NULL;
   params->delay_ratio = 0.1;
@@ -90,10 +90,10 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
   params->n_promotion = 0;
 
   if (cache_specific_params != NULL) {
-    LRU_delay_parse_params(cache, cache_specific_params);
+    PredDelay_parse_params(cache, cache_specific_params);
   }
   
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "LRU_delay_%f",
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "PredDelay_%f",
            params->delay_ratio);
 
   return cache;
@@ -104,8 +104,8 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
  *
  * @param cache
  */
-static void LRU_delay_free(cache_t *cache) { 
-    LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+static void PredDelay_free(cache_t *cache) { 
+    PredDelay_params_t *params = (PredDelay_params_t *)cache->eviction_params;
     printf("n_promotion: %d\n", params->n_promotion);
     free(cache->eviction_params);
     cache_struct_free(cache);
@@ -130,7 +130,7 @@ static void LRU_delay_free(cache_t *cache) {
  * @param req
  * @return true if cache hit, false if cache miss
  */
-static bool LRU_delay_get(cache_t *cache, const request_t *req) {
+static bool PredDelay_get(cache_t *cache, const request_t *req) {
   return cache_get_base(cache, req);
 }
 
@@ -150,15 +150,15 @@ static bool LRU_delay_get(cache_t *cache, const request_t *req) {
  *  and if the object is expired, it is removed from the cache
  * @return true on hit, false on miss
  */
-static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
+static cache_obj_t *PredDelay_find(cache_t *cache, const request_t *req,
                              const bool update_cache) {
-  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+  PredDelay_params_t *params = (PredDelay_params_t *)cache->eviction_params;
   cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
 
   // no matter what, we need to check the buffer and see i
 
   // params->vtime++;
-  if (cache_obj && likely(update_cache) && params->vtime - cache_obj->delay_count.last_vtime > params->delay_time) {
+  if (cache_obj && likely(update_cache) && (float)(params->vtime - cache_obj->delay_count.last_vtime) > ((float)params->delay_time) * cache_obj->delay_count.scaler) {
     /* lru_head is the newest, move cur obj to lru_head */
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)
@@ -169,6 +169,7 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
       // update the last access time
       cache_obj->delay_count.last_vtime = params->vtime;
       params->n_promotion++;
+      cache_obj->delay_count.scaler *= 1.5;
   }
 
   return cache_obj;
@@ -185,11 +186,12 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
  * @param req
  * @return the inserted object
  */
-static cache_obj_t *LRU_delay_insert(cache_t *cache, const request_t *req) {
-  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+static cache_obj_t *PredDelay_insert(cache_t *cache, const request_t *req) {
+  PredDelay_params_t *params = (PredDelay_params_t *)cache->eviction_params;
   params->vtime++;
   cache_obj_t *obj = cache_insert_base(cache, req);
   obj->delay_count.last_vtime = params->vtime;
+  obj->delay_count.scaler = 1.0;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
   return obj;
@@ -205,8 +207,8 @@ static cache_obj_t *LRU_delay_insert(cache_t *cache, const request_t *req) {
  * @param cache the cache
  * @return the object to be evicted
  */
-static cache_obj_t *LRU_delay_to_evict(cache_t *cache, const request_t *req) {
-  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+static cache_obj_t *PredDelay_to_evict(cache_t *cache, const request_t *req) {
+  PredDelay_params_t *params = (PredDelay_params_t *)cache->eviction_params;
 
   DEBUG_ASSERT(params->q_tail != NULL || cache->occupied_byte == 0);
 
@@ -222,8 +224,8 @@ static cache_obj_t *LRU_delay_to_evict(cache_t *cache, const request_t *req) {
  * @param cache
  * @param req not used
  */
-static void LRU_delay_evict(cache_t *cache, const request_t *req) {
-  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+static void PredDelay_evict(cache_t *cache, const request_t *req) {
+  PredDelay_params_t *params = (PredDelay_params_t *)cache->eviction_params;
   cache_obj_t *obj_to_evict = params->q_tail;
   obj_to_evict->delay_count.last_vtime = 0;
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
@@ -245,9 +247,9 @@ static void LRU_delay_evict(cache_t *cache, const request_t *req) {
  * @param cache
  * @param obj
  */
-static void LRU_delay_remove_obj(cache_t *cache, cache_obj_t *obj_to_remove) {
+static void PredDelay_remove_obj(cache_t *cache, cache_obj_t *obj_to_remove) {
   DEBUG_ASSERT(obj_to_remove != NULL);
-  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+  PredDelay_params_t *params = (PredDelay_params_t *)cache->eviction_params;
 
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_remove);
   cache_remove_obj_base(cache, obj_to_remove, true);
@@ -266,13 +268,13 @@ static void LRU_delay_remove_obj(cache_t *cache, cache_obj_t *obj_to_remove) {
  * @return true if the object is removed, false if the object is not in the
  * cache
  */
-static bool LRU_delay_remove(cache_t *cache, const obj_id_t obj_id) {
+static bool PredDelay_remove(cache_t *cache, const obj_id_t obj_id) {
   cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_id);
   if (obj == NULL) {
     return false;
   }
 
-  LRU_delay_remove_obj(cache, obj);
+  PredDelay_remove_obj(cache, obj);
 
   return true;
 }
@@ -282,17 +284,17 @@ static bool LRU_delay_remove(cache_t *cache, const obj_id_t obj_id) {
 // ****                  parameter set up functions                   ****
 // ****                                                               ****
 // ***********************************************************************
-static const char *LRU_delay_current_params(
-                                        LRU_delay_params_t *params) {
+static const char *PredDelay_current_params(
+                                        PredDelay_params_t *params) {
   static __thread char params_str[128];
   int n =
       snprintf(params_str, 128, "delay-time=%llu\n", params->delay_time);
   return params_str;
 }
 
-static void LRU_delay_parse_params(cache_t *cache,
+static void PredDelay_parse_params(cache_t *cache,
                                   const char *cache_specific_params) {
-  LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
+  PredDelay_params_t *params = (PredDelay_params_t *)cache->eviction_params;
   char *params_str = strdup(cache_specific_params);
   char *old_params_str = params_str;
   char *end;

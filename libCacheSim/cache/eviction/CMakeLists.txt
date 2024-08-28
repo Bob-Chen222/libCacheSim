@@ -30,6 +30,7 @@ set(sourceC
         LRUProb.c
         pred_prob.c
         LRUdelay.c
+        pred_delay.c
         LRUdelayv1.c
         QDLP.c
         nop.c

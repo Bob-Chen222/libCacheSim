@@ -30,6 +30,7 @@ typedef struct {
     cache_t *main_cache;
     uint64_t *buffer; //a buffer that stores only 5 to 10 objects depend on the performance and will be setup in the init function
     pqueue_t *pq; //a priority queue for selecting the object to be evicted
+    uint64_t buffer_size;
 
     // main cache
     char main_cache_type[32];
@@ -132,7 +133,8 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
     ERROR("HOTCache does not support %s \n", params->main_cache_type);
   }
 
-  params->buffer = malloc(sizeof(cache_obj_t *) * 1);
+  params->buffer_size = 0;
+  params->buffer = malloc(sizeof(cache_obj_t *) * params->buffer_size);
   params->pq = pqueue_init((unsigned long)8e6);
   params->init = true;
   params->found_in_buffer = 0;
@@ -205,7 +207,7 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
   DEBUG_ASSERT(update_cache == true); // only support this mode
   if (params -> init){
     // if the cache is in the init phase, we need to run the main cache
-    cached_obj = cache_find_base(params -> main_cache, req, update_cache);
+    cached_obj = params -> main_cache->find(params->main_cache, req, update_cache);
     assert(cached_obj == params -> main_cache -> find(params -> main_cache, req, update_cache));
     if (cached_obj == NULL) return NULL;
     cached_obj->misc.freq++;
@@ -214,13 +216,8 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
     return cached_obj;
   }else{
     // check the buffer
-    for (int i = 0; i < 10; i++){
+    for (int i = 0; i < params -> buffer_size; i++){
       if (params -> buffer[i] == req -> obj_id){
-        // printf("obj id: %lu\n", req -> obj_id);
-        // printf("i: %d\n", i);
-        // printf("params buffer: %lu\n", params -> buffer[i]);
-        // we know we found it
-        // copy requst to object
         cached_obj = malloc(sizeof(cache_obj_t));
         copy_request_to_cache_obj(cached_obj, req);
         params -> found_in_buffer++;
@@ -251,8 +248,8 @@ static cache_obj_t *HOTCache_insert(cache_t *cache, const request_t *req) {
   HOTCache_params_t *params = (HOTCache_params_t *)cache->eviction_params;
   DEBUG_ASSERT(!hashtable_find_obj_id(params->main_cache->hashtable, req->obj_id));
   cache_obj_t *obj = params->main_cache->insert(params->main_cache, req);
-  // also need to insert the object into the base
-  // cache_insert_base(cache, req);
+  // // also need to insert the object into the base
+  // // cache_insert_base(cache, req);
   obj -> last_access_time = cache -> n_insert;
   cache->occupied_byte +=
       (int64_t)obj->obj_size + (int64_t)cache->obj_md_size;
@@ -262,10 +259,12 @@ static cache_obj_t *HOTCache_insert(cache_t *cache, const request_t *req) {
     printf("HOTCache: initialization done\n");
     params -> init = false;
     // we select top 10 objects from the priority queue to the buffer
-    for (int i = 0; i < 10; i++){
+    for (int i = 0; i < params->buffer_size; i++){
       pq_node_t *node = (pq_node_t *)pqueue_pop(params->pq);
       params -> buffer[i] = node -> obj_id;
       printf("selected obj id: %lu\n", node -> obj_id);
+      // we should also delete these objects in the main cache
+
     }
     // free the priority queue
     pq_node_t *node = pqueue_pop(params->pq);
@@ -320,6 +319,8 @@ static void HOTCache_evict(cache_t *cache, const request_t *req) {
   params->main_cache->evict(params->main_cache, req);
   cache->occupied_byte -= 1; //assert occupied byte is 1
   cache->n_obj -= 1;
+  // everytime we update the n_promotion
+  cache -> n_promotion = params -> main_cache -> n_promotion;
   return;
 }
 

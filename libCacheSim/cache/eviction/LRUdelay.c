@@ -17,8 +17,8 @@ typedef struct {
   cache_obj_t *q_tail;
   // fields added in addition to clock-
   uint64_t delay_time; // determines how often promotion is performed
-  float delay_ratio;
-  uint64_t vtime;
+  double delay_ratio;
+  uint64_t n_insertion;
   int n_promotion;
 } LRU_delay_params_t;
 
@@ -86,7 +86,7 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
   params->delay_ratio = 0.1;
   params->delay_time = params->delay_ratio * cache->cache_size;
   cache->eviction_params = params;
-  params->vtime = 0;
+  params->n_insertion = 0;
   params->n_promotion = 0;
 
   if (cache_specific_params != NULL) {
@@ -157,8 +157,14 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
 
   // no matter what, we need to check the buffer and see i
 
-  // params->vtime++;
-  if (cache_obj && likely(update_cache) && params->vtime - cache_obj->delay_count.last_vtime > params->delay_time) {
+  // params->n_insertion++;
+  if (cache_obj == NULL) {
+    return NULL;
+  }
+
+  int threshold = MIN(cache_obj->misc.freq, (int)round(0.2/ params->delay_ratio));
+  // printf("freq %d threshold: %d %lf %d\n", cache_obj->misc.freq, threshold, params->delay_ratio, (int)round(0.2/ params->delay_ratio));
+  if (cache_obj && likely(update_cache) && params->n_insertion - cache_obj->delay_count.last_promo_vtime > threshold * params->delay_time) {
     /* lru_head is the newest, move cur obj to lru_head */
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)
@@ -167,7 +173,7 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
       cache -> n_promotion++;
       // update the last access time
-      cache_obj->delay_count.last_vtime = params->vtime;
+      cache_obj->delay_count.last_promo_vtime = params->n_insertion;
       params->n_promotion++;
   }
 
@@ -187,9 +193,9 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *LRU_delay_insert(cache_t *cache, const request_t *req) {
   LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
-  params->vtime++;
+  params->n_insertion++;
   cache_obj_t *obj = cache_insert_base(cache, req);
-  obj->delay_count.last_vtime = params->vtime;
+  obj->delay_count.last_promo_vtime = params->n_insertion;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
   return obj;
@@ -225,7 +231,7 @@ static cache_obj_t *LRU_delay_to_evict(cache_t *cache, const request_t *req) {
 static void LRU_delay_evict(cache_t *cache, const request_t *req) {
   LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
   cache_obj_t *obj_to_evict = params->q_tail;
-  obj_to_evict->delay_count.last_vtime = 0;
+  obj_to_evict->delay_count.last_promo_vtime = 0;
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
   cache_remove_obj_base(cache, obj_to_evict, true);
 }
@@ -286,7 +292,7 @@ static const char *LRU_delay_current_params(
                                         LRU_delay_params_t *params) {
   static __thread char params_str[128];
   int n =
-      snprintf(params_str, 128, "delay-time=%llu\n", params->delay_time);
+      snprintf(params_str, 128, "delay-time=%lu\n", params->delay_time);
   return params_str;
 }
 

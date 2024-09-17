@@ -170,7 +170,6 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-
   cache_obj_t *obj = cache_insert_base(cache, req);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 

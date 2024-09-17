@@ -164,7 +164,7 @@ static cache_obj_t *PredProb_find(cache_t *cache, const request_t *req,
 #endif
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
       cache -> n_promotion ++;
-      cache_obj -> LRUProb.scaler = cache_obj -> LRUProb.scaler * params -> prob;
+      cache_obj -> LRUProb.scaler = MAX(cache_obj -> LRUProb.scaler * params -> prob, 0.1);
       cache_obj -> LRUProb.freq ++;
   }
   return cache_obj;

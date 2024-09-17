@@ -213,6 +213,9 @@ cache_t *S3FIFO_init(const common_cache_params_t ccache_params,
 cache_t *S3FIFOd_init(const common_cache_params_t ccache_params,
                       const char *cache_specific_params);
 
+cache_t *HOTCache_init(const common_cache_params_t ccache_params,
+                       const char *cache_specific_params);
+
 cache_t *Sieve_Belady_init(const common_cache_params_t ccache_params,
                            const char *cache_specific_params);
 

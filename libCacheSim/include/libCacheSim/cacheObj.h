@@ -107,9 +107,12 @@ typedef struct {
 } lpFIFO_shards_obj_metadata_t;
 
 typedef struct {
-  uint64_t last_vtime;
-  int freq;
-  float scaler;
+  uint64_t last_promo_vtime;
+  uint64_t last_promotion;
+  // int freq;
+  // float scaler;
+  uint64_t last_hit_vtime;
+  // uint64_t sum;
 }delay_obj_metadata_t;
 
 typedef struct {
@@ -170,6 +173,7 @@ typedef struct {
 typedef struct {
   int64_t next_access_vtime;
   int32_t freq;
+  void *pq_node;
 } __attribute__((packed)) misc_metadata_t;
 
 // ############################## cache obj ###################################

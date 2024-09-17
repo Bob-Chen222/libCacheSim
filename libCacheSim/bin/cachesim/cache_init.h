@@ -156,6 +156,8 @@ static inline cache_t *create_cache(const char *trace_path,
     cache = S3FIFO_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "s3fifod") == 0) {
     cache = S3FIFOd_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "hotcache") == 0) {
+    cache = HOTCache_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "qdlp") == 0) {
     cache = QDLP_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "sharding") == 0) {

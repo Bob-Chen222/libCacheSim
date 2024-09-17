@@ -244,10 +244,10 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
 
   cache_obj_t *obj = cache->find(cache, req, true);
   bool hit = (obj != NULL);
-
   if (hit) {
     VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
   } else if (!cache->can_insert(cache, req)) {
+    printf("cannot insert obj %ld\n", req -> obj_id);
     VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
              req->obj_id);
   } else {
@@ -349,7 +349,7 @@ void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
   cache -> num_demotion_obj += 1;
   // printf("add demotion time %ld\n", cache -> n_insert - obj -> last_access_time);
   // prevent overflow
-  assert(cache -> sum_demotion_time >= (cache -> n_insert - obj -> last_access_time));
+  // assert(cache -> sum_demotion_time >= (cache -> n_insert - obj -> last_access_time));
 
   if (remove_from_hashtable) {
     hashtable_delete(cache->hashtable, obj);

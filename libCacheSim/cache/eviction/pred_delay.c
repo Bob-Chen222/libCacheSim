@@ -18,8 +18,7 @@ typedef struct {
   // fields added in addition to clock-
   uint64_t delay_time; // determines how often promotion is performed
   float delay_ratio;
-  uint64_t vtime;
-  int n_promotion;
+  uint64_t n_insertion;
 } PredDelay_params_t;
 
 static const char *DEFAULT_PARAMS = "delay-time=0.1";
@@ -86,8 +85,7 @@ cache_t *PredDelay_init(const common_cache_params_t ccache_params,
   params->delay_ratio = 0.1;
   params->delay_time = params->delay_ratio * cache->cache_size;
   cache->eviction_params = params;
-  params->vtime = 0;
-  params->n_promotion = 0;
+  params->n_insertion = 0;
 
   if (cache_specific_params != NULL) {
     PredDelay_parse_params(cache, cache_specific_params);
@@ -106,7 +104,7 @@ cache_t *PredDelay_init(const common_cache_params_t ccache_params,
  */
 static void PredDelay_free(cache_t *cache) { 
     PredDelay_params_t *params = (PredDelay_params_t *)cache->eviction_params;
-    printf("n_promotion: %d\n", params->n_promotion);
+    printf("num promotion: %lld\n", cache -> n_promotion);
     free(cache->eviction_params);
     cache_struct_free(cache);
 }
@@ -157,8 +155,25 @@ static cache_obj_t *PredDelay_find(cache_t *cache, const request_t *req,
 
   // no matter what, we need to check the buffer and see i
 
-  // params->vtime++;
-  if (cache_obj && likely(update_cache) && (float)(params->vtime - cache_obj->delay_count.last_vtime) > ((float)params->delay_time) * cache_obj->delay_count.scaler) {
+  if (cache_obj == NULL) {
+    return NULL;
+  }
+  float remain_life = (float)(cache -> cache_size - params->n_insertion + cache_obj->delay_count.last_promo_vtime);
+  remain_life = (float)(remain_life - cache -> n_promotion + cache_obj->delay_count.last_promotion);
+  remain_life = (float)(params->n_insertion - cache_obj->delay_count.last_promo_vtime);
+  float current_waiting_time = (float) params->n_insertion - cache_obj -> delay_count.last_hit_vtime;
+  float miss_ratio = 0.35f;
+  current_waiting_time = (float)req->next_access_vtime - cache->n_req;
+
+  current_waiting_time = current_waiting_time * miss_ratio;
+  // printf("current waiting time: %f next access %ld %ld\n", current_waiting_time, req->next_access_vtime, cache->n_req);
+  // printf("remain life: %f\n", remain_life);
+
+  
+
+  // remain life is a lower bound on the value of lives
+  cache_obj->delay_count.last_hit_vtime = params->n_insertion;
+  if (cache_obj && likely(update_cache) && remain_life < current_waiting_time) {
     /* lru_head is the newest, move cur obj to lru_head */
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)
@@ -167,9 +182,9 @@ static cache_obj_t *PredDelay_find(cache_t *cache, const request_t *req,
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
       cache -> n_promotion++;
       // update the last access time
-      cache_obj->delay_count.last_vtime = params->vtime;
-      params->n_promotion++;
-      cache_obj->delay_count.scaler *= 1.5;
+      cache_obj->delay_count.last_promo_vtime = params->n_insertion;
+      cache_obj->delay_count.last_promotion = cache -> n_promotion;
+      // cache_obj->delay_count.scaler *= 1.5;
   }
 
   return cache_obj;
@@ -188,10 +203,12 @@ static cache_obj_t *PredDelay_find(cache_t *cache, const request_t *req,
  */
 static cache_obj_t *PredDelay_insert(cache_t *cache, const request_t *req) {
   PredDelay_params_t *params = (PredDelay_params_t *)cache->eviction_params;
-  params->vtime++;
+  params->n_insertion++;
   cache_obj_t *obj = cache_insert_base(cache, req);
-  obj->delay_count.last_vtime = params->vtime;
-  obj->delay_count.scaler = 1.0;
+  obj->delay_count.last_promo_vtime = params->n_insertion;
+  obj->delay_count.last_promotion = cache -> n_promotion;
+  // obj->delay_count.scaler = 1.0;
+  obj->delay_count.last_hit_vtime = params->n_insertion;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
   return obj;
@@ -227,7 +244,11 @@ static cache_obj_t *PredDelay_to_evict(cache_t *cache, const request_t *req) {
 static void PredDelay_evict(cache_t *cache, const request_t *req) {
   PredDelay_params_t *params = (PredDelay_params_t *)cache->eviction_params;
   cache_obj_t *obj_to_evict = params->q_tail;
-  obj_to_evict->delay_count.last_vtime = 0;
+  obj_to_evict->delay_count.last_promo_vtime = 0;
+  obj_to_evict->delay_count.last_promotion = 0;
+  obj_to_evict->delay_count.last_hit_vtime = 0;
+  // obj_to_evict->delay_count.freq = 0;
+  // obj_to_evict->delay_count.sum = 0;
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
   cache_remove_obj_base(cache, obj_to_evict, true);
 }

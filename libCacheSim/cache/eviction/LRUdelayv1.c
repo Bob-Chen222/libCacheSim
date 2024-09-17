@@ -159,7 +159,7 @@ static cache_obj_t *LRU_delayv1_find(cache_t *cache, const request_t *req,
   // no matter what, we need to check the buffer and see i
 
   // params->vtime++;
-  if (cache_obj && likely(update_cache) && (params->vtime - cache_obj->delay_count.last_vtime > params->delay_time)) {
+  if (cache_obj && likely(update_cache) && (params->vtime - cache_obj->delay_count.last_promo_vtime > params->delay_time)) {
     /* lru_head is the newest, move cur obj to lru_head */
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)
@@ -177,8 +177,8 @@ static cache_obj_t *LRU_delayv1_find(cache_t *cache, const request_t *req,
       DEBUG_ASSERT(params -> q_head != NULL);
       move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
       // update the last access time
-      cache_obj->delay_count.last_vtime = params->vtime;
-      cache_obj->delay_count.freq++;
+      cache_obj->delay_count.last_promo_vtime = params->vtime;
+      // cache_obj->delay_count.freq++;
       params->n_promotion++;
   }
 
@@ -201,8 +201,8 @@ static cache_obj_t *LRU_delayv1_insert(cache_t *cache, const request_t *req) {
 //   printf("dist marker to tail: %d\n", dist_marker_tail(params->marker, params->q_tail));
   params->vtime++;
   cache_obj_t *obj = cache_insert_base(cache, req);
-  obj->delay_count.last_vtime = params->vtime;
-  obj->delay_count.freq = 0;
+  obj->delay_count.last_promo_vtime = params->vtime;
+  // obj->delay_count.freq = 0;
 
   // we insert it to the back of the queue
   // TODO: need to check whether this is correct
@@ -241,7 +241,7 @@ static cache_obj_t *LRU_delayv1_to_evict(cache_t *cache, const request_t *req) {
 static void LRU_delayv1_evict(cache_t *cache, const request_t *req) {
   LRU_delayv1_params_t *params = (LRU_delayv1_params_t *)cache->eviction_params;
   cache_obj_t *obj_to_evict = params->q_tail;
-  obj_to_evict->delay_count.last_vtime = 0;
+  obj_to_evict->delay_count.last_promo_vtime = 0;
 
   // at every eviction, punish the marker to move one object back
   // if (params->marker != NULL && params->marker != params -> q_head) {

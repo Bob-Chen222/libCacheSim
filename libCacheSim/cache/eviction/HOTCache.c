@@ -111,29 +111,18 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
     params->main_cache = Clock_init(ccache_params_local, "n-bit-counter=2");
   } else if (strcasecmp(params->main_cache_type, "clock3") == 0) {
     params->main_cache = Clock_init(ccache_params_local, "n-bit-counter=3");
-  } else if (strcasecmp(params->main_cache_type, "sieve") == 0) {
-    params->main_cache = Sieve_init(ccache_params_local, NULL);
-  } else if (strcasecmp(params->main_cache_type, "LRU") == 0) {
+  } else if (strcasecmp(params->main_cache_type, "lru") == 0) {
     params->main_cache = LRU_init(ccache_params_local, NULL);
-  } else if (strcasecmp(params->main_cache_type, "ARC") == 0) {
-    params->main_cache = ARC_init(ccache_params_local, NULL);
-  } else if (strcasecmp(params->main_cache_type, "LHD") == 0) {
-    params->main_cache = LHD_init(ccache_params_local, NULL);
-  } else if (strcasecmp(params->main_cache_type, "LeCaR") == 0) {
-    params->main_cache = LeCaR_init(ccache_params_local, NULL);
-  } else if (strcasecmp(params->main_cache_type, "Cacheus") == 0) {
-    params->main_cache = Cacheus_init(ccache_params_local, NULL);
-  } else if (strcasecmp(params->main_cache_type, "twoQ") == 0) {
-    params->main_cache = TwoQ_init(ccache_params_local, NULL);
-  } else if (strcasecmp(params->main_cache_type, "LIRS") == 0) {
-    params->main_cache = LIRS_init(ccache_params_local, NULL);
-  } else if (strcasecmp(params->main_cache_type, "Hyperbolic") == 0) {
-    params->main_cache = Hyperbolic_init(ccache_params_local, NULL);
-  } else {
-    ERROR("HOTCache does not support %s \n", params->main_cache_type);
+  } else if (strcasecmp(params->main_cache_type, "lruprob") == 0) {
+    params->main_cache = lpLRU_prob_init(ccache_params_local, "prob=0.5");
+  } else if (strcasecmp(params->main_cache_type, "lrudelay") == 0) {
+    params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.3");
+  } else{
+    ERROR("HOTCache: main cache type %s is not supported\n",
+          params->main_cache_type);
   }
 
-  params->buffer_size = 0;
+  params->buffer_size = 10;
   params->buffer = malloc(sizeof(cache_obj_t *) * params->buffer_size);
   params->pq = pqueue_init((unsigned long)8e6);
   params->init = true;

@@ -28,9 +28,11 @@ extern "C" {
 typedef struct {
 //   initial selection
     cache_t *main_cache;
-    uint64_t *buffer; //a buffer that stores only 5 to 10 objects depend on the performance and will be setup in the init function
-    pqueue_t *pq; //a priority queue for selecting the object to be evicted
+    cache_obj_t **buffer; //a buffer that stores only 5 to 10 objects depend on the performance and will be setup in the init function
+    // pqueue_t *pq; //a priority queue for selecting the object to be evicted
     uint64_t buffer_size;
+    float buffer_ratio;
+    uint64_t divisor;
 
     // main cache
     char main_cache_type[32];
@@ -39,10 +41,20 @@ typedef struct {
 
     // profiling
     int found_in_buffer;
+    int round;
+    int request_epoch;
+    int found_in_buffer_sum;
+    int promotion_epoch;
+
+    int highest_freq; //highest frequency in the last epoch
+    int slots_buffer; //the current index that we are at in the buffer
+    int next_refresh_time; //the next time we refresh the buffer
+    int threshold_to_buffer;
+    uint64_t miss;
 } HOTCache_params_t;
 
 static const char *DEFAULT_CACHE_PARAMS =
-    "main-cache=Clock";
+    "main-cache=Clock,size-buffer=0.1,admission-divisor=100";
 
 // ***********************************************************************
 // ****                                                               ****
@@ -98,14 +110,22 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
     HOTCache_parse_params(cache, cache_specific_params);
   }
 
-  int64_t main_cache_size = ccache_params.cache_size;
+  // params->buffer_size = cache -> cache_size / 10;
+  params->buffer = malloc(sizeof(cache_obj_t *) * params->buffer_size);
+  // choose 0-9
+  for (int i = 0; i < params->buffer_size; i++){
+    cache_obj_t *obj = malloc(sizeof(cache_obj_t));
+    obj -> obj_id = i;
+    params->buffer[i] = obj;
+  }
+  int64_t main_cache_size = ccache_params.cache_size - params->buffer_size;
+  DEBUG_ASSERT(main_cache_size > 0);
 
   common_cache_params_t ccache_params_local = ccache_params;
   ccache_params_local.cache_size = main_cache_size;
   if (strcasecmp(params->main_cache_type, "FIFO") == 0) {
     params->main_cache = FIFO_init(ccache_params_local, NULL);
   } else if (strcasecmp(params->main_cache_type, "clock") == 0) {
-    printf("HOTCache: using clock\n");
     params->main_cache = Clock_init(ccache_params_local, NULL);
   } else if (strcasecmp(params->main_cache_type, "clock2") == 0) {
     params->main_cache = Clock_init(ccache_params_local, "n-bit-counter=2");
@@ -116,20 +136,28 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
   } else if (strcasecmp(params->main_cache_type, "lruprob") == 0) {
     params->main_cache = lpLRU_prob_init(ccache_params_local, "prob=0.5");
   } else if (strcasecmp(params->main_cache_type, "lrudelay") == 0) {
-    params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.3");
+    params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.1");
   } else{
     ERROR("HOTCache: main cache type %s is not supported\n",
           params->main_cache_type);
   }
 
-  params->buffer_size = 10;
-  params->buffer = malloc(sizeof(cache_obj_t *) * params->buffer_size);
-  params->pq = pqueue_init((unsigned long)8e6);
+  // initalize every object id to be -1
+  for (int i = 0; i < params->buffer_size; i++){
+    params->buffer[i] = NULL;
+  }
+  // params->pq = pqueue_init((unsigned long)8e6);
   params->init = true;
   params->found_in_buffer = 0;
+  params->highest_freq = 0;
+  params->slots_buffer = 0;
+  params->next_refresh_time = -1;
+  params->miss = 0;
+  params->request_epoch = 0;
+  params->promotion_epoch = 0;
 
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "HOTCache-%s",
-           params->main_cache_type);
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "HOTCache-%s-%.2f-%d",
+           params->main_cache_type, params->buffer_ratio, params->divisor);
   return cache;
 }
 
@@ -141,7 +169,6 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
 static void HOTCache_free(cache_t *cache) {
   HOTCache_params_t *params = (HOTCache_params_t *)cache->eviction_params;
   params->main_cache->cache_free(params->main_cache);
-  printf("HOTCache: found in buffer %d\n", params->found_in_buffer);
   free(params->buffer);
   free(cache->eviction_params);
   cache_struct_free(cache);
@@ -191,34 +218,61 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
                                 const bool update_cache) {
   HOTCache_params_t *params = (HOTCache_params_t *)cache->eviction_params;
   cache_obj_t *cached_obj = NULL;
-  
-  // if update cache is false, we only check the fifo and main caches
-  DEBUG_ASSERT(update_cache == true); // only support this mode
-  if (params -> init){
-    // if the cache is in the init phase, we need to run the main cache
-    cached_obj = params -> main_cache->find(params->main_cache, req, update_cache);
-    assert(cached_obj == params -> main_cache -> find(params -> main_cache, req, update_cache));
-    if (cached_obj == NULL) return NULL;
-    cached_obj->misc.freq++;
-    pqueue_pri_t pri = {.pri = cached_obj->misc.freq};
-    pqueue_change_priority(params->pq, pri, cached_obj->misc.pq_node);
-    return cached_obj;
+  params -> request_epoch++;
+
+  if ((cache -> cache_size == cache -> n_obj && params -> next_refresh_time == -1) || params -> next_refresh_time == cache -> n_req){
+  //  expected reuse distance is cache size / miss ratio
+  // printf("refreshing the buffer\n");
+  float miss_ratio = (float)params -> miss / (float)cache -> n_req;
+  int expected_reuse_distance = (int)((float)cache -> cache_size / miss_ratio);
+  // int expected_reuse_distance = 100000000;
+  if (params -> next_refresh_time == -1){
+    params -> next_refresh_time = cache -> n_req + expected_reuse_distance;
   }else{
-    // check the buffer
-    for (int i = 0; i < params -> buffer_size; i++){
-      if (params -> buffer[i] == req -> obj_id){
-        cached_obj = malloc(sizeof(cache_obj_t));
-        copy_request_to_cache_obj(cached_obj, req);
-        params -> found_in_buffer++;
-        return cached_obj;
-      }
-    }
-    // check the main cache
-    cached_obj = params->main_cache->find(params->main_cache, req, update_cache);
-    return cached_obj;
+    params -> next_refresh_time = cache -> n_req + expected_reuse_distance;
+  }
+  params -> threshold_to_buffer = params -> highest_freq / params -> divisor;
+  params -> slots_buffer = 0;
+  params -> highest_freq = 0;
+  params -> found_in_buffer_sum += params -> found_in_buffer;
+  params -> found_in_buffer = 0;
+  params -> request_epoch = 0;
+  params -> promotion_epoch = params -> main_cache -> n_promotion;
   }
 
-  return NULL; // should not reach here
+  // if update cache is false, we only check the fifo and main caches
+  DEBUG_ASSERT(update_cache == true); // only support this mode
+  // update priority queue everytime
+  cache_obj_t *obj_buf = hashtable_find_obj_id(cache -> hashtable, req -> obj_id);
+  if (obj_buf != NULL){
+    obj_buf -> misc.freq++;
+    if (obj_buf -> misc.freq > params -> highest_freq){
+      params -> highest_freq = obj_buf -> misc.freq;
+    }
+    params -> found_in_buffer++;
+    return obj_buf;
+  }
+
+
+  // if the cache is in the init phase, we need to run the main cache
+  cached_obj = params -> main_cache->find(params->main_cache, req, update_cache);
+  if (cached_obj == NULL) return NULL;
+  cached_obj->misc.freq++;
+  if (cached_obj->misc.freq > params->highest_freq){
+    params->highest_freq = cached_obj->misc.freq;
+    // printf("obj with highest freq: %d\n", cached_obj->obj_id);
+  }
+  // if it meets the threshold, we will put it into the buffer
+  if (cached_obj -> misc.freq > params -> threshold_to_buffer && params -> slots_buffer < params -> buffer_size){
+    // delete the previous object in the hashtable
+    if (hashtable_find_obj_id(cache -> hashtable, cached_obj -> obj_id)){
+      hashtable_delete_obj_id(cache -> hashtable, cached_obj -> obj_id);
+    }
+    cache_obj_t* new = hashtable_insert(cache -> hashtable, req);
+    params -> buffer[params -> slots_buffer] = new;
+    params -> slots_buffer++;
+  }
+  return cached_obj;
 }
 
 /**
@@ -235,6 +289,7 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
 static cache_obj_t *HOTCache_insert(cache_t *cache, const request_t *req) {
   // do the regular insertion
   HOTCache_params_t *params = (HOTCache_params_t *)cache->eviction_params;
+  params -> miss++;
   DEBUG_ASSERT(!hashtable_find_obj_id(params->main_cache->hashtable, req->obj_id));
   cache_obj_t *obj = params->main_cache->insert(params->main_cache, req);
   // // also need to insert the object into the base
@@ -243,39 +298,8 @@ static cache_obj_t *HOTCache_insert(cache_t *cache, const request_t *req) {
   cache->occupied_byte +=
       (int64_t)obj->obj_size + (int64_t)cache->obj_md_size;
   cache->n_obj += 1;
-  if (cache -> n_obj + 1 == cache -> cache_size && params -> init){
-    // we have enough objects to select
-    printf("HOTCache: initialization done\n");
-    params -> init = false;
-    // we select top 10 objects from the priority queue to the buffer
-    for (int i = 0; i < params->buffer_size; i++){
-      pq_node_t *node = (pq_node_t *)pqueue_pop(params->pq);
-      params -> buffer[i] = node -> obj_id;
-      printf("selected obj id: %lu\n", node -> obj_id);
-      // we should also delete these objects in the main cache
-
-    }
-    // free the priority queue
-    pq_node_t *node = pqueue_pop(params->pq);
-    while (node) {
-      my_free(sizeof(pq_node_t), node);
-      node = pqueue_pop(params->pq);
-    }
-    pqueue_free(params->pq);
-  }
-
-  if (params -> init){
-    // only when initalizing the cache, we need to
-    pq_node_t *node = malloc(sizeof(pq_node_t));
-    node -> obj_id = obj -> obj_id;
-    //priority is ranked based on the frequency
-    node -> pri.pri = 0;
-    pqueue_insert(params->pq, (void*)node);
-    // we need to make sure that this is not in the buffer
-
-    obj -> misc.pq_node = node;
-    obj -> misc.freq = 0;
-  }
+  // every 1 million requests, we just update the buffer
+  obj -> misc.freq = 0;
   return obj;
 }
 
@@ -387,6 +411,11 @@ static void HOTCache_parse_params(cache_t *cache,
 
     if (strcasecmp(key, "main-cache") == 0) {
       strncpy(params->main_cache_type, value, 30);
+    } else if (strcasecmp(key, "size-buffer") == 0) {
+      params->buffer_ratio = atof(value);
+      params->buffer_size = (uint64_t)(atof(value) * cache->cache_size);
+    } else if (strcasecmp(key, "admission-divisor") == 0) {
+      params->divisor = (uint64_t)atol(value);
     } else if (strcasecmp(key, "print") == 0) {
       printf("parameters: %s\n", HOTCache_current_params(params));
       exit(0);

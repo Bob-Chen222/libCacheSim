@@ -245,7 +245,7 @@ static void PredClock_evict(cache_t *cache, const request_t *req) {
     cache->n_promotion += 1;
     obj_to_evict->predClock.check_time = params->vtime;
     obj_to_evict = params->q_tail;
-    estimated_reuse_distance = params->vtime - obj_to_evict->predClock.last_access_vtime;
+    estimated_reuse_distance = (params->vtime - obj_to_evict->predClock.last_access_vtime) * params->scaler;
   }
 
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);

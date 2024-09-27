@@ -138,9 +138,9 @@ static void _simulate(gpointer data, gpointer user_data) {
   result[idx].n_promotion = local_cache->n_promotion;
 
   result[idx].mean_stay_time = ((double)local_cache->sum_demotion_time) / ((double)local_cache->num_demotion_obj);
-  printf("mean stay time: %lf\n", result[idx].mean_stay_time);
-  printf("num_demotion_obj: %lu\n", local_cache->num_demotion_obj);
-  printf("sum_demotion_time: %lu\n", local_cache->sum_demotion_time);
+  // printf("mean stay time: %lf\n", result[idx].mean_stay_time);
+  // printf("num_demotion_obj: %lu\n", local_cache->num_demotion_obj);
+  // printf("sum_demotion_time: %lu\n", local_cache->sum_demotion_time);
   // report progress
   g_mutex_lock(&(params->mtx));
   (*(params->progress))++;

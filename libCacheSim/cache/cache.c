@@ -316,6 +316,7 @@ void cache_evict_base(cache_t *cache, cache_obj_t *obj,
     record_eviction_age(cache, obj, CURR_TIME(cache, req) - obj->create_time);
   }
 #endif
+  obj -> misc.freq = 0;
   if (cache->prefetcher && cache->prefetcher->handle_evict) {
     request_t *check_req = new_request();
     check_req->obj_id = obj->obj_id;

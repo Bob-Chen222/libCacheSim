@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cache.h"
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,6 +71,7 @@ typedef struct {
   int64_t miss;
   int64_t vtime;
   double scaler; //used for simulating the popularity decay
+  double scale;
 } PredClock_params_t;
 
 cache_t *ARC_init(const common_cache_params_t ccache_params,

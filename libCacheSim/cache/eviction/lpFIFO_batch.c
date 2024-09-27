@@ -12,6 +12,7 @@
 
 #include "../../dataStructure/hashtable/hashtable.h"
 #include "../../include/libCacheSim/evictionAlgo.h"
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -179,6 +180,7 @@ static bool lpFIFO_batch_get(cache_t *cache, const request_t *req) {
  */
 static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
                                const bool update_cache) {
+  clock_t start = clock();
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
 
@@ -199,6 +201,8 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
     obj->next_access_vtime = req->next_access_vtime;
 #endif
   }
+  clock_t end = clock();
+  printf("find time: %f\n", (double)(end - start) / CLOCKS_PER_SEC);
 
   return obj;
 }

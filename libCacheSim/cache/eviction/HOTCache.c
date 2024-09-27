@@ -20,19 +20,25 @@
 #include "../../dataStructure/hashtable/hashtable.h"
 #include "../../include/libCacheSim/evictionAlgo.h"
 #include "../../dataStructure/pqueue.h"
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef struct {
-//   initial selection
     cache_t *main_cache;
+
     cache_obj_t **buffer; //a buffer that stores only 5 to 10 objects depend on the performance and will be setup in the init function
-    // pqueue_t *pq; //a priority queue for selecting the object to be evicted
     uint64_t buffer_size;
     float buffer_ratio;
-    uint64_t divisor;
+
+    uint64_t divisor; //used for admit objects into the buffer
+    int highest_freq; //highest frequency in the last epoch
+    int slots_buffer; //the current index that we are at in the buffer
+    int next_refresh_time; //the next time we refresh the buffer
+    int threshold_to_buffer;
+    uint64_t miss;
 
     // main cache
     char main_cache_type[32];
@@ -46,11 +52,6 @@ typedef struct {
     int found_in_buffer_sum;
     int promotion_epoch;
 
-    int highest_freq; //highest frequency in the last epoch
-    int slots_buffer; //the current index that we are at in the buffer
-    int next_refresh_time; //the next time we refresh the buffer
-    int threshold_to_buffer;
-    uint64_t miss;
 } HOTCache_params_t;
 
 static const char *DEFAULT_CACHE_PARAMS =
@@ -109,8 +110,7 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
   if (cache_specific_params != NULL) {
     HOTCache_parse_params(cache, cache_specific_params);
   }
-
-  // params->buffer_size = cache -> cache_size / 10;
+ 
   params->buffer = malloc(sizeof(cache_obj_t *) * params->buffer_size);
   // choose 0-9
   for (int i = 0; i < params->buffer_size; i++){
@@ -133,10 +133,60 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
     params->main_cache = Clock_init(ccache_params_local, "n-bit-counter=3");
   } else if (strcasecmp(params->main_cache_type, "lru") == 0) {
     params->main_cache = LRU_init(ccache_params_local, NULL);
-  } else if (strcasecmp(params->main_cache_type, "lruprob") == 0) {
+  } else if (strcasecmp(params->main_cache_type, "lruprob1") == 0) {
+    params->main_cache = lpLRU_prob_init(ccache_params_local, "prob=0.1");
+  } else if (strcasecmp(params->main_cache_type, "lruprob2") == 0) {
+    params->main_cache = lpLRU_prob_init(ccache_params_local, "prob=0.2");
+  } else if (strcasecmp(params->main_cache_type, "lruprob3") == 0) {
+    params->main_cache = lpLRU_prob_init(ccache_params_local, "prob=0.3");
+  } else if (strcasecmp(params->main_cache_type, "lruprob4") == 0) {
+    params->main_cache = lpLRU_prob_init(ccache_params_local, "prob=0.4");
+  } else if (strcasecmp(params->main_cache_type, "lruprob5") == 0) {
     params->main_cache = lpLRU_prob_init(ccache_params_local, "prob=0.5");
-  } else if (strcasecmp(params->main_cache_type, "lrudelay") == 0) {
+  } else if (strcasecmp(params->main_cache_type, "lruprob6") == 0) {
+    params->main_cache = lpLRU_prob_init(ccache_params_local, "prob=0.6");
+  } else if (strcasecmp(params->main_cache_type, "lruprob7") == 0) {
+    params->main_cache = lpLRU_prob_init(ccache_params_local, "prob=0.7");
+  } else if (strcasecmp(params->main_cache_type, "lruprob8") == 0) {
+    params->main_cache = lpLRU_prob_init(ccache_params_local, "prob=0.8");
+  } else if (strcasecmp(params->main_cache_type, "lruprob9") == 0) {
+    params->main_cache = lpLRU_prob_init(ccache_params_local, "prob=0.9");
+  } else if (strcasecmp(params->main_cache_type, "lrudelay1") == 0) {
     params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.1");
+  } else if (strcasecmp(params->main_cache_type, "lrudelay2") == 0) {
+    params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.2");
+  } else if (strcasecmp(params->main_cache_type, "lrudelay3") == 0) {
+    params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.3");
+  } else if (strcasecmp(params->main_cache_type, "lrudelay4") == 0) {
+    params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.4");
+  } else if (strcasecmp(params->main_cache_type, "lrudelay5") == 0) {
+    params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.5");
+  } else if (strcasecmp(params->main_cache_type, "lrudelay6") == 0) {
+    params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.6");
+  } else if (strcasecmp(params->main_cache_type, "lrudelay7") == 0) {
+    params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.7");
+  } else if (strcasecmp(params->main_cache_type, "lrudelay8") == 0) {
+    params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.8");
+  } else if (strcasecmp(params->main_cache_type, "lrudelay9") == 0) {
+    params->main_cache = LRU_delay_init(ccache_params_local, "delay-time=0.9");
+  } else if (strcasecmp(params->main_cache_type, "lrubatch1") == 0) {
+    params->main_cache = lpFIFO_batch_init(ccache_params_local, "batch-size=0.1");
+  } else if (strcasecmp(params->main_cache_type, "lrubatch2") == 0) {
+    params->main_cache = lpFIFO_batch_init(ccache_params_local, "batch-size=0.2");
+  } else if (strcasecmp(params->main_cache_type, "lrubatch3") == 0) {
+    params->main_cache = lpFIFO_batch_init(ccache_params_local, "batch-size=0.3");
+  } else if (strcasecmp(params->main_cache_type, "lrubatch4") == 0) {
+    params->main_cache = lpFIFO_batch_init(ccache_params_local, "batch-size=0.4");
+  } else if (strcasecmp(params->main_cache_type, "lrubatch5") == 0) {
+    params->main_cache = lpFIFO_batch_init(ccache_params_local, "batch-size=0.5");
+  } else if (strcasecmp(params->main_cache_type, "lrubatch6") == 0) {
+    params->main_cache = lpFIFO_batch_init(ccache_params_local, "batch-size=0.6");
+  } else if (strcasecmp(params->main_cache_type, "lrubatch7") == 0) {
+    params->main_cache = lpFIFO_batch_init(ccache_params_local, "batch-size=0.7");
+  } else if (strcasecmp(params->main_cache_type, "lrubatch8") == 0) {
+    params->main_cache = lpFIFO_batch_init(ccache_params_local, "batch-size=0.8");
+  } else if (strcasecmp(params->main_cache_type, "lrubatch9") == 0) {
+    params->main_cache = lpFIFO_batch_init(ccache_params_local, "batch-size=0.9");
   } else{
     ERROR("HOTCache: main cache type %s is not supported\n",
           params->main_cache_type);
@@ -220,36 +270,33 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
   cache_obj_t *cached_obj = NULL;
   params -> request_epoch++;
 
-  if ((cache -> cache_size == cache -> n_obj && params -> next_refresh_time == -1) || params -> next_refresh_time == cache -> n_req){
-  //  expected reuse distance is cache size / miss ratio
-  // printf("refreshing the buffer\n");
-  float miss_ratio = (float)params -> miss / (float)cache -> n_req;
-  int expected_reuse_distance = (int)((float)cache -> cache_size / miss_ratio);
-  // int expected_reuse_distance = 100000000;
-  if (params -> next_refresh_time == -1){
-    params -> next_refresh_time = cache -> n_req + expected_reuse_distance;
-  }else{
-    params -> next_refresh_time = cache -> n_req + expected_reuse_distance;
-  }
-  params -> threshold_to_buffer = params -> highest_freq / params -> divisor;
-  params -> slots_buffer = 0;
-  params -> highest_freq = 0;
-  params -> found_in_buffer_sum += params -> found_in_buffer;
-  params -> found_in_buffer = 0;
-  params -> request_epoch = 0;
-  params -> promotion_epoch = params -> main_cache -> n_promotion;
+  if ((params -> slots_buffer == params->buffer_size && params -> next_refresh_time == -1) || params -> next_refresh_time == cache -> n_req){
+    //  expected reuse distance is cache size / miss ratio
+    float miss_ratio = (float)params -> miss / (float)cache -> n_req;
+    int expected_reuse_distance = (int)((float)cache -> cache_size / miss_ratio);
+    if (params -> next_refresh_time == -1){
+      params -> next_refresh_time = cache -> n_req + expected_reuse_distance;
+    }else{
+      params -> next_refresh_time = cache -> n_req + expected_reuse_distance;
+    }
+    params -> threshold_to_buffer = params -> highest_freq / params -> divisor;
+    params -> slots_buffer = 0;
+    params -> highest_freq = 0;
+    // params -> found_in_buffer_sum += params -> found_in_buffer;
+    // params -> found_in_buffer = 0;
+    params -> request_epoch = 0;
+    params -> promotion_epoch = params -> main_cache -> n_promotion;
   }
 
   // if update cache is false, we only check the fifo and main caches
   DEBUG_ASSERT(update_cache == true); // only support this mode
-  // update priority queue everytime
   cache_obj_t *obj_buf = hashtable_find_obj_id(cache -> hashtable, req -> obj_id);
   if (obj_buf != NULL){
-    obj_buf -> misc.freq++;
-    if (obj_buf -> misc.freq > params -> highest_freq){
-      params -> highest_freq = obj_buf -> misc.freq;
-    }
-    params -> found_in_buffer++;
+    // obj_buf -> misc.freq++;
+    // if (obj_buf -> misc.freq > params -> highest_freq){
+    //   params -> highest_freq = obj_buf -> misc.freq;
+    // }
+    // params -> found_in_buffer++;
     return obj_buf;
   }
 
@@ -260,14 +307,22 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
   cached_obj->misc.freq++;
   if (cached_obj->misc.freq > params->highest_freq){
     params->highest_freq = cached_obj->misc.freq;
-    // printf("obj with highest freq: %d\n", cached_obj->obj_id);
   }
   // if it meets the threshold, we will put it into the buffer
   if (cached_obj -> misc.freq > params -> threshold_to_buffer && params -> slots_buffer < params -> buffer_size){
     // delete the previous object in the hashtable
-    if (hashtable_find_obj_id(cache -> hashtable, cached_obj -> obj_id)){
-      hashtable_delete_obj_id(cache -> hashtable, cached_obj -> obj_id);
+    // get the candidate object
+    cache_obj_t *candidate_to_delete = params -> buffer[params -> slots_buffer];
+    if (candidate_to_delete && (cache -> hashtable, candidate_to_delete -> obj_id)){
+      // printf("delete obj id: %d\n", candidate_to_delete -> obj_id);
+      hashtable_delete_obj_id(cache -> hashtable, candidate_to_delete -> obj_id);
     }
+
+    // do a strong check
+    if (cache -> hashtable -> n_obj > params -> buffer_size){
+      ERROR("HOTCache: buffer size is not enough\n");
+    }
+    
     cache_obj_t* new = hashtable_insert(cache -> hashtable, req);
     params -> buffer[params -> slots_buffer] = new;
     params -> slots_buffer++;

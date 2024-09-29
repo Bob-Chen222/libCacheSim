@@ -235,7 +235,7 @@ static void PredClock_evict(cache_t *cache, const request_t *req) {
   assert(params->vtime >= obj_to_evict->predClock.last_access_vtime); // Prevent underflow
   assert((double)(params->vtime - obj_to_evict->predClock.last_access_vtime) <= DBL_MAX / params->scaler); // Prevent overflow in multiplication
 
-  double estimated_reuse_distance = ((double) obj_to_evict->predClock.reuse_dst) * params->scaler;
+  double estimated_reuse_distance = (params->vtime - obj_to_evict->predClock.last_access_vtime) * params->scaler;
   while (obj_to_evict->predClock.freq !=0 && estimated_reuse_distance <= expected_reuse_distance && obj_to_evict->predClock.check_time != params->vtime) {
     // TODO: need to discuss with jason whether we need to decay
     obj_to_evict->predClock.freq -= 1;

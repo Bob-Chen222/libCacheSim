@@ -35,6 +35,7 @@ static cache_obj_t *PredClock_insert(cache_t *cache, const request_t *req);
 static cache_obj_t *PredClock_to_evict(cache_t *cache, const request_t *req);
 static void PredClock_evict(cache_t *cache, const request_t *req);
 static bool PredClock_remove(cache_t *cache, const obj_id_t obj_id);
+static bool is_retained(cache_t *cache, cache_obj_t *obj_to_evict, const double expected_reuse_distance);
 
 // ***********************************************************************
 // ****                                                               ****
@@ -236,7 +237,8 @@ static void PredClock_evict(cache_t *cache, const request_t *req) {
   assert((double)(params->vtime - obj_to_evict->predClock.last_access_vtime) <= DBL_MAX / params->scaler); // Prevent overflow in multiplication
 
   double estimated_reuse_distance = (params->vtime - obj_to_evict->predClock.last_access_vtime) * params->scaler;
-  while (obj_to_evict->predClock.freq !=0 && estimated_reuse_distance <= expected_reuse_distance && obj_to_evict->predClock.check_time != params->vtime) {
+  bool retained = is_retained(cache, obj_to_evict, expected_reuse_distance);
+  while (obj_to_evict->predClock.freq !=0 && is_retained && obj_to_evict->predClock.check_time != params->vtime) {
     // TODO: need to discuss with jason whether we need to decay
     obj_to_evict->predClock.freq -= 1;
     params->n_obj_rewritten += 1;
@@ -245,7 +247,7 @@ static void PredClock_evict(cache_t *cache, const request_t *req) {
     cache->n_promotion += 1;
     obj_to_evict->predClock.check_time = params->vtime;
     obj_to_evict = params->q_tail;
-    estimated_reuse_distance = (params->vtime - obj_to_evict->predClock.last_access_vtime) * params->scaler;
+    retained = is_retained(cache, obj_to_evict, expected_reuse_distance);
   }
 
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
@@ -297,6 +299,24 @@ static bool PredClock_remove(cache_t *cache, const obj_id_t obj_id) {
   PredClock_remove_obj(cache, obj);
 
   return true;
+}
+
+static bool is_retained(cache_t *cache, cache_obj_t *obj_to_evict, const double expected_reuse_distance) {
+  PredClock_params_t *params = (PredClock_params_t *)cache->eviction_params;
+  double reuse_age = (params->vtime - obj_to_evict->predClock.last_access_vtime);
+  double estimated_reuse_distance = obj_to_evict->predClock.reuse_dst;
+
+  if (estimated_reuse_distance > reuse_age) {
+    return true;
+  }else{
+    if (reuse_age * params->scaler < expected_reuse_distance) {
+      return true;
+    }else{
+      return false;
+    }
+  }
+
+  return false;
 }
 
 // ***********************************************************************

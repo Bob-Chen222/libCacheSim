@@ -133,7 +133,7 @@ cache_t *lpFIFO_batch_init(const common_cache_params_t ccache_params,
  */
 static void lpFIFO_batch_free(cache_t *cache) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)(cache->eviction_params);
-  printf("total promotion: %d\n", params->num_promotion);
+  // printf("total promotion: %d\n", params->num_promotion);
   free(params->buffer);
   free(cache->eviction_params);
   cache_struct_free(cache);
@@ -180,7 +180,6 @@ static bool lpFIFO_batch_get(cache_t *cache, const request_t *req) {
  */
 static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
                                const bool update_cache) {
-  clock_t start = clock();
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
 
@@ -201,8 +200,6 @@ static cache_obj_t *lpFIFO_batch_find(cache_t *cache, const request_t *req,
     obj->next_access_vtime = req->next_access_vtime;
 #endif
   }
-  clock_t end = clock();
-  printf("find time: %f\n", (double)(end - start) / CLOCKS_PER_SEC);
 
   return obj;
 }
@@ -285,7 +282,6 @@ static void lpFIFO_batch_evict(cache_t *cache, const request_t *req) {
  */
 static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, uint64_t *buff, const uint64_t* start) {
   lpFIFO_batch_params_t *params = (lpFIFO_batch_params_t *)cache->eviction_params;
-  params->num_promotion++;
   uint64_t pos = 0;
   uint64_t count = 0;
   if (*start > params->buffer_size) {
@@ -307,6 +303,7 @@ static void lpFIFO_batch_promote_all(cache_t *cache, const request_t *req, uint6
       if (hashtable_find_obj_id(duplicate_table, obj_to_promote) == NULL){
         hashtable_f_insert_obj(duplicate_table, obj);
         cache -> n_promotion += 1;
+        params->num_promotion++;
       }
     }
     pos += 1;

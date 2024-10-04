@@ -292,11 +292,11 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
   DEBUG_ASSERT(update_cache == true); // only support this mode
   cache_obj_t *obj_buf = hashtable_find_obj_id(cache -> hashtable, req -> obj_id);
   if (obj_buf != NULL){
-    // obj_buf -> misc.freq++;
-    // if (obj_buf -> misc.freq > params -> highest_freq){
-    //   params -> highest_freq = obj_buf -> misc.freq;
-    // }
-    // params -> found_in_buffer++;
+    obj_buf -> misc.freq++;
+    if (obj_buf -> misc.freq > params -> highest_freq){
+      params -> highest_freq = obj_buf -> misc.freq;
+    }
+    params -> found_in_buffer++;
     return obj_buf;
   }
 
@@ -313,7 +313,7 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
     // delete the previous object in the hashtable
     // get the candidate object
     cache_obj_t *candidate_to_delete = params -> buffer[params -> slots_buffer];
-    if (candidate_to_delete && (cache -> hashtable, candidate_to_delete -> obj_id)){
+    if (candidate_to_delete && hashtable_find_obj_id(cache -> hashtable, candidate_to_delete -> obj_id)){
       // printf("delete obj id: %d\n", candidate_to_delete -> obj_id);
       hashtable_delete_obj_id(cache -> hashtable, candidate_to_delete -> obj_id);
     }
@@ -325,6 +325,7 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
     
     cache_obj_t* new = hashtable_insert(cache -> hashtable, req);
     params -> buffer[params -> slots_buffer] = new;
+    new -> misc.freq = cached_obj -> misc.freq;
     params -> slots_buffer++;
   }
   return cached_obj;

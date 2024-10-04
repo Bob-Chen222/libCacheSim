@@ -162,9 +162,9 @@ static cache_obj_t *LRU_delay_find(cache_t *cache, const request_t *req,
     return NULL;
   }
 
-  int threshold = MIN(cache_obj->misc.freq, (int)round(0.2/ params->delay_ratio));
+  // int threshold = MIN(cache_obj->misc.freq, (int)round(0.2/ params->delay_ratio));
   // printf("freq %d threshold: %d %lf %d\n", cache_obj->misc.freq, threshold, params->delay_ratio, (int)round(0.2/ params->delay_ratio));
-  if (cache_obj && likely(update_cache) && params->n_insertion - cache_obj->delay_count.last_promo_vtime > threshold * params->delay_time) {
+  if (cache_obj && likely(update_cache) && params->n_insertion - cache_obj->delay_count.last_promo_vtime > params->delay_time) {
     /* lru_head is the newest, move cur obj to lru_head */
 #ifdef USE_BELADY
     if (req->next_access_vtime != INT64_MAX)

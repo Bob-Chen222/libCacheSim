@@ -134,7 +134,6 @@ static bool LRU_get(cache_t *cache, const request_t *req) {
  */
 static cache_obj_t *LRU_find(cache_t *cache, const request_t *req,
                              const bool update_cache) {
-  clock_t start = clock();
   LRU_params_t *params = (LRU_params_t *)cache->eviction_params;
   cache_obj_t *cache_obj = cache_find_base(cache, req, update_cache);
 
@@ -148,8 +147,6 @@ static cache_obj_t *LRU_find(cache_t *cache, const request_t *req,
       cache -> n_promotion++;
       params -> n_promotion++;
   }
-  clock_t end = clock();
-  printf("LRU_find: %f\n", (double)(end - start) / CLOCKS_PER_SEC);
   return cache_obj;
 }
 

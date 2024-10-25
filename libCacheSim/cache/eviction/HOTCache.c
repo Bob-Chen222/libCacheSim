@@ -32,6 +32,7 @@ typedef struct {
     cache_obj_t **buffer; //a buffer that stores only 5 to 10 objects depend on the performance and will be setup in the init function
     uint64_t buffer_size;
     float buffer_ratio;
+    uint64_t main_cache_size;
 
     uint64_t divisor; //used for admit objects into the buffer
     int highest_freq; //highest frequency in the last epoch
@@ -120,6 +121,8 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
     params->buffer[i] = obj;
   }
   int64_t main_cache_size = ccache_params.cache_size - params->buffer_size;
+  printf("main_cache_size: %ld\n", main_cache_size);
+  params->main_cache_size = main_cache_size;
   DEBUG_ASSERT(main_cache_size > 0);
 
   common_cache_params_t ccache_params_local = ccache_params;
@@ -248,9 +251,28 @@ static void HOTCache_free(cache_t *cache) {
  * @return true if cache hit, false if cache miss
  */
 static bool HOTCache_get(cache_t *cache, const request_t *req) {
-  // check if the cache is full
-  bool cache_hit = cache_get_base(cache, req);
-  return cache_hit;
+  // first try to find the object in the cache
+  HOTCache_params_t *params = (HOTCache_params_t *)cache->eviction_params;
+  cache_obj_t *obj = HOTCache_find(cache, req, true);
+  bool hit = (obj != NULL);
+  if (hit) {
+    VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
+  } else if (!cache->can_insert(cache, req)) {
+    printf("cannot insert obj %ld\n", req -> obj_id);
+    VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
+             req->obj_id);
+  } else {
+    cache->n_insert += 1;
+    while (cache->get_occupied_byte(cache) + req->obj_size +
+               cache->obj_md_size >
+           params -> main_cache_size) {
+      // printf("occupied bytes: %d\n", cache->get_occupied_byte(cache));
+      // printf("params main cache size: %d\n", params -> main_cache_size);
+      HOTCache_evict(cache, req);
+    }
+    HOTCache_insert(cache, req);
+  }
+  return hit;
 }
 
 // ***********************************************************************
@@ -316,14 +338,29 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
     // get the candidate object
     cache_obj_t *candidate_to_delete = params -> buffer[params -> slots_buffer];
     if (candidate_to_delete && hashtable_find_obj_id(cache -> hashtable, candidate_to_delete -> obj_id)){
-      // printf("delete obj id: %d\n", candidate_to_delete -> obj_id);
+      request_t *req_candidate = malloc(sizeof(request_t));
+      copy_cache_obj_to_request(req_candidate, candidate_to_delete);
+      params -> main_cache -> get(params -> main_cache, req_candidate);
       hashtable_delete_obj_id(cache -> hashtable, candidate_to_delete -> obj_id);
+      free(req_candidate);
     }
 
     // do a strong check
     if (cache -> hashtable -> n_obj > params -> buffer_size){
       ERROR("HOTCache: buffer size is not enough\n");
       exit(1);
+    }
+    if (params -> main_cache -> cache_size > cache -> cache_size - params -> buffer_size){
+      ERROR("HOTCache: main cache size is not enough\n");
+      printf("main cache size: %ld\n", params -> main_cache -> n_obj);
+      printf("cache size: %ld\n", cache -> cache_size);
+      exit(1);
+    }
+    if (params -> main_cache -> hashtable -> n_obj > cache -> cache_size - params -> buffer_size){
+      // printf("main cache hashtable size: %ld\n", params -> main_cache -> hashtable -> n_obj);
+      // printf("cache size: %ld\n", cache -> cache_size);
+      // printf("buffer size: %ld\n", params -> buffer_size);
+      ERROR("HOTCache: main cache hashtable size is not enough\n");
     }
     
     cache_obj_t* new = hashtable_insert(cache -> hashtable, req);

@@ -106,7 +106,6 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
  */
 static void LRU_delay_free(cache_t *cache) { 
     LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
-    printf("n_promotion: %d\n", params->n_promotion);
     free(cache->eviction_params);
     cache_struct_free(cache);
 }

@@ -184,6 +184,7 @@ typedef struct cache_obj {
   obj_id_t obj_id;
   uint32_t obj_size;
   uint64_t last_access_time;
+  uint32_t freq;
   pthread_mutex_t lock;
   struct {
     struct cache_obj *prev;

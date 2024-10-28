@@ -50,7 +50,7 @@ typedef struct {
     int found_in_buffer;
     int round;
     int request_epoch;
-    int found_in_buffer_sum;
+    int num_hit_main_cache;
     int promotion_epoch;
     int promotion_saved_epoch;
 
@@ -121,7 +121,6 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
     params->buffer[i] = obj;
   }
   int64_t main_cache_size = ccache_params.cache_size - params->buffer_size;
-  printf("main_cache_size: %ld\n", main_cache_size);
   params->main_cache_size = main_cache_size;
   DEBUG_ASSERT(main_cache_size > 0);
 
@@ -211,6 +210,7 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
   params->promotion_epoch = 0;
   params->threshold_to_buffer = 0;
   params->promotion_saved_epoch = 0;
+  params->num_hit_main_cache = 0;
 
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "HOTCache-%s-%.2f-%d",
            params->main_cache_type, params->buffer_ratio, params->divisor);
@@ -225,7 +225,7 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
 static void HOTCache_free(cache_t *cache) {
   HOTCache_params_t *params = (HOTCache_params_t *)cache->eviction_params;
   params->main_cache->cache_free(params->main_cache);
-  printf("found in buffer: %d cs: %d\n", params->found_in_buffer, cache -> cache_size);
+  printf("num hit main cache: %d\n", params -> num_hit_main_cache);
   free(params->buffer);
   free(cache->eviction_params);
   cache_struct_free(cache);
@@ -256,22 +256,18 @@ static bool HOTCache_get(cache_t *cache, const request_t *req) {
   cache_obj_t *obj = HOTCache_find(cache, req, true);
   bool hit = (obj != NULL);
   if (hit) {
-    VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
   } else if (!cache->can_insert(cache, req)) {
     printf("cannot insert obj %ld\n", req -> obj_id);
-    VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
-             req->obj_id);
   } else {
     cache->n_insert += 1;
     while (cache->get_occupied_byte(cache) + req->obj_size +
                cache->obj_md_size >
            params -> main_cache_size) {
-      // printf("occupied bytes: %d\n", cache->get_occupied_byte(cache));
-      // printf("params main cache size: %d\n", params -> main_cache_size);
       HOTCache_evict(cache, req);
     }
     HOTCache_insert(cache, req);
   }
+  // cache -> n_promotion = params -> main_cache -> n_promotion;
   return hit;
 }
 
@@ -299,7 +295,7 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
   if ((params -> slots_buffer == params->buffer_size && params -> next_refresh_time == -1) || params -> next_refresh_time == cache -> n_req){
     //  expected reuse distance is cache size / miss ratio
     float miss_ratio = (float)params -> miss / (float)cache -> n_req;
-    int expected_reuse_distance = (int)((float)cache -> cache_size / miss_ratio) * 10000000000;
+    int expected_reuse_distance = (int)((float)cache -> cache_size / miss_ratio);
     if (params -> next_refresh_time == -1){
       params -> next_refresh_time = cache -> n_req + expected_reuse_distance;
     }else{
@@ -309,7 +305,7 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
     params -> slots_buffer = 0;
     params -> highest_freq = 0;
     params -> request_epoch = 0;
-    params -> promotion_epoch = params -> main_cache -> n_promotion;
+    printf("refresh buffer\n");
   }
 
   // if update cache is false, we only check the fifo and main caches
@@ -326,8 +322,10 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
 
 
   // if the cache is in the init phase, we need to run the main cache
-  cached_obj = params -> main_cache->find(params->main_cache, req, update_cache);
+  cached_obj = params->main_cache->find(params->main_cache, req, update_cache);
   if (cached_obj == NULL) return NULL;
+  params -> num_hit_main_cache++;
+  cache -> type1++;
   cached_obj->freq++;
   if (cached_obj->freq > params->highest_freq){
     params->highest_freq = cached_obj->freq;
@@ -338,11 +336,7 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
     // get the candidate object
     cache_obj_t *candidate_to_delete = params -> buffer[params -> slots_buffer];
     if (candidate_to_delete && hashtable_find_obj_id(cache -> hashtable, candidate_to_delete -> obj_id)){
-      request_t *req_candidate = malloc(sizeof(request_t));
-      copy_cache_obj_to_request(req_candidate, candidate_to_delete);
-      params -> main_cache -> get(params -> main_cache, req_candidate);
       hashtable_delete_obj_id(cache -> hashtable, candidate_to_delete -> obj_id);
-      free(req_candidate);
     }
 
     // do a strong check
@@ -366,6 +360,7 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
     cache_obj_t* new = hashtable_insert(cache -> hashtable, req);
     params -> buffer[params -> slots_buffer] = new;
     new -> freq = cached_obj -> freq;
+    printf("insert obj %ld into buffer with freq %d\n", new -> obj_id, new -> freq);
     params -> slots_buffer++;
   }
   return cached_obj;

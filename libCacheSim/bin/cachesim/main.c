@@ -62,6 +62,8 @@ int main(int argc, char **argv) {
 
   printf("\n");
   for (int i = 0; i < args.n_cache_size * args.n_eviction_algo; i++) {
+    // printf("DEBUG - number of misses: %f\n", (double)result[i].n_miss);
+    // printf("DEBUG - number of requests: %f\n", (double)result[i].n_req);
     snprintf(output_str, 1024,
              "%s %32s cache size %8ld%s, %lld req, miss ratio %.4lf, byte miss "
              "ratio %.4lf %8ld %.4lf %8ld %8ld %8ld %8ld %8ld\n",

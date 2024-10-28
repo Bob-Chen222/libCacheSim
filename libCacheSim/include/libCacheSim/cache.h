@@ -91,7 +91,7 @@ typedef struct {
   char cache_name[CACHE_NAME_ARRAY_LEN];
 
   // profiling for belady
-  int64_t type1;
+  int64_t type1; //used for hotcache as well
   int64_t type2;
   int64_t type3;
   int64_t type4;
@@ -130,7 +130,7 @@ struct cache {
   // other name: logical_time, virtual_time, reference_count
   int64_t n_req; /* number of requests (used by some eviction algo) */
 
-  int64_t type1;
+  int64_t type1; //used for hotcache as well
   int64_t type2;
   int64_t type3;
   int64_t type4;

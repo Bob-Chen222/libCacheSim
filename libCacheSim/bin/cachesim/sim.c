@@ -46,14 +46,14 @@ void simulate(reader_t *reader, cache_t *cache, int report_interval,
     }
     if (req->clock_time - last_report_ts >= report_interval &&
         req->clock_time != 0) {
-      INFO(
-          "%s %s %.2lf hour: %lu requests, miss ratio %.4lf, interval miss "
-          "ratio "
-          "%.4lf\n",
-          mybasename(reader->trace_path), cache->cache_name,
-          (double)req->clock_time / 3600, (unsigned long)req_cnt,
-          (double)miss_cnt / req_cnt,
-          (double)(miss_cnt - last_miss_cnt) / (req_cnt - last_req_cnt));
+      // INFO(
+      //     "%s %s %.2lf hour: %lu requests, miss ratio %.4lf, interval miss "
+      //     "ratio "
+      //     "%.4lf\n",
+      //     mybasename(reader->trace_path), cache->cache_name,
+      //     (double)req->clock_time / 3600, (unsigned long)req_cnt,
+      //     (double)miss_cnt / req_cnt,
+      //     (double)(miss_cnt - last_miss_cnt) / (req_cnt - last_req_cnt));
       last_miss_cnt = miss_cnt;
       last_req_cnt = req_cnt;
       last_report_ts = (int64_t)req->clock_time;
@@ -88,6 +88,7 @@ void simulate(reader_t *reader, cache_t *cache, int report_interval,
 
 #pragma GCC diagnostic pop
   printf("%s", output_str);
+  // printf("hit count %ld\n", req_cnt - miss_cnt);
 
   FILE *output_file = fopen(ofilepath, "a");
   if (output_file == NULL) {

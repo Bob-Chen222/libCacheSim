@@ -168,6 +168,8 @@ static inline cache_t *create_cache(const char *trace_path,
     cache = Sieve_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "randomBelady") == 0){
     cache = RandomBelady_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "randomLRU") == 0){
+    cache = RandomLRU_init(cc_params, eviction_params);
 #ifdef ENABLE_GLCACHE
   } else if (strcasecmp(eviction_algo, "GLCache") == 0 ||
              strcasecmp(eviction_algo, "gl-cache") == 0) {

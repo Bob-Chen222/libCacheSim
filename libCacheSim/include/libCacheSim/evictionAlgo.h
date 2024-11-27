@@ -243,6 +243,9 @@ cache_t *bc_init(const common_cache_params_t ccache_params,
                  const char *cache_specific_params);
                         
 
+cache_t *RandomBelady_init(const common_cache_params_t ccache_params,
+                           const char *cache_specific_params);
+
 #ifdef ENABLE_LRB
 cache_t *LRB_init(const common_cache_params_t ccache_params,
                   const char *cache_specific_params);

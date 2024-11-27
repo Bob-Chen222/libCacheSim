@@ -53,6 +53,7 @@ set(sourceC
         Sieve.c
 
         FrozenHot.c
+        RandomBelady.c
 
 )
 

@@ -53,6 +53,12 @@ typedef struct {
 } ARC_obj_metadata_t;
 
 typedef struct {
+  int64_t last_access_vtime;
+  int64_t insertion_time;
+  int32_t oracle_idx;
+} Random_obj_metadata_t;
+
+typedef struct {
   void *lfu_next;
   void *lfu_prev;
   int64_t eviction_vtime:40;
@@ -215,6 +221,7 @@ typedef struct cache_obj {
     LRUProb_obj_metadata_t LRUProb;
     Hyperbolic_obj_metadata_t hyperbolic;
     RandomTwo_obj_metadata_t RandomTwo;
+    Random_obj_metadata_t Random;
     Belady_obj_metadata_t Belady;
     FIFO_obj_metadata_t FIFO;
     FIFO_Merge_obj_metadata_t FIFO_Merge;

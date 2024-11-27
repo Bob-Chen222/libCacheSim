@@ -16,8 +16,11 @@
 extern "C" {
 #endif
 
+static const char *DEFAULT_PARAMS = "scaler=1.5";
+
 typedef struct RandomBelady_params {
   int64_t n_miss;
+  double scaler;
 } RandomBelady_params_t;
 
 // ***********************************************************************
@@ -34,6 +37,7 @@ static cache_obj_t *RandomBelady_to_evict(cache_t *cache, const request_t *req);
 static void RandomBelady_evict(cache_t *cache, const request_t *req);
 static bool RandomBelady_remove(cache_t *cache, const obj_id_t obj_id);
 static bool can_evict(cache_t *cache, const request_t *req);
+static void RandomBelady_parse_params(cache_t *cache, const char *cache_specific_params);
 
 // ***********************************************************************
 // ****                                                               ****
@@ -63,6 +67,13 @@ cache_t *RandomBelady_init(const common_cache_params_t ccache_params, const char
 
   cache->eviction_params = my_malloc(RandomBelady_params_t);
   ((RandomBelady_params_t *)cache->eviction_params)->n_miss = 0;
+  ((RandomBelady_params_t *)cache->eviction_params)->scaler = 1.5; //default
+
+  // parse the cache specific parameters
+  RandomBelady_parse_params(cache, DEFAULT_PARAMS);
+  if (cache_specific_params != NULL) {
+    RandomBelady_parse_params(cache, cache_specific_params);
+  }
 
   return cache;
 }
@@ -217,17 +228,51 @@ static bool can_evict(cache_t *cache, const request_t *req) {
 
   int64_t n_req = cache->n_req;
   int64_t n_miss = ((RandomBelady_params_t *)cache->eviction_params)->n_miss;
+  double scaler = ((RandomBelady_params_t *)cache->eviction_params)->scaler;
   double miss_ratio = (double)n_miss / (double)cache->n_req;
   int64_t dist = (double)req->next_access_vtime - cache->n_req;
   int64_t threshold = ((double)cache->cache_size / miss_ratio);
 
-  if (dist > threshold * 2) {
+  if (dist > threshold * scaler) {
     return true;
   } else {
     return false;
   }
 
   return false;
+}
+
+static void RandomBelady_parse_params(cache_t *cache,
+                               const char *cache_specific_params) {
+  RandomBelady_params_t *params = (RandomBelady_params_t *)cache->eviction_params;
+  char *params_str = strdup(cache_specific_params);
+  char *old_params_str = params_str;
+  char *end;
+
+  while (params_str != NULL && params_str[0] != '\0') {
+    /* different parameters are separated by comma,
+     * key and value are separated by = */
+    char *key = strsep((char **)&params_str, "=");
+    char *value = strsep((char **)&params_str, ",");
+
+    // skip the white space
+    while (params_str != NULL && *params_str == ' ') {
+      params_str++;
+    }
+
+
+    if (strcasecmp(key, "scaler") == 0) {
+      params->scaler = (float)strtod(value, &end);
+      if (strlen(end) > 2) {
+        ERROR("param parsing error, find string \"%s\" after number\n", end);
+      }
+    } else if (strcasecmp(key, "print") == 0) {
+      exit(0);
+    } else {
+      exit(1);
+    }
+  }
+  free(old_params_str);
 }
 
 #ifdef __cplusplus

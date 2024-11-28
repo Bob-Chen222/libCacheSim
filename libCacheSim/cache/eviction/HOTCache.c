@@ -351,9 +351,6 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
       exit(1);
     }
     if (params -> main_cache -> hashtable -> n_obj > cache -> cache_size - params -> buffer_size){
-      // printf("main cache hashtable size: %ld\n", params -> main_cache -> hashtable -> n_obj);
-      // printf("cache size: %ld\n", cache -> cache_size);
-      // printf("buffer size: %ld\n", params -> buffer_size);
       ERROR("HOTCache: main cache hashtable size is not enough\n");
     }
     

@@ -20,7 +20,7 @@ extern "C" {
 // #define USE_BELADY
 #undef USE_BELADY
 
-static const char *DEFAULT_PARAMS = "n-bit-counter=1";
+static const char *DEFAULT_PARAMS = "scaler=1.5";
 
 // ***********************************************************************
 // ****                                                               ****
@@ -84,11 +84,10 @@ cache_t *BeladyClock_init(const common_cache_params_t ccache_params,
   if (cache_specific_params != NULL) {
     BeladyClock_parse_params(cache, cache_specific_params);
   }
+  printf("scaler: %f\n", params->scaler);
 
-  if (params->n_bit_counter != 1) {
-    snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "BeladyClock-%d",
-             params->n_bit_counter);
-  }
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "BeladyClock-%f",
+             params->scaler);
 
   return cache;
 }
@@ -229,7 +228,7 @@ static void BeladyClock_evict(cache_t *cache, const request_t *req) {
   BeladyClock_params_t *params = (BeladyClock_params_t *)cache->eviction_params;
   double miss_ratio;
   miss_ratio = (double)params->miss / (double)params->vtime;
-  double expected_reuse_distance = (double)cache -> cache_size / miss_ratio;
+  double expected_reuse_distance = (double)cache -> cache_size / miss_ratio * params->scaler;
 
   cache_obj_t *obj_to_evict = params->q_tail;
   int64_t reuse_distance = 0L;
@@ -337,13 +336,13 @@ static void BeladyClock_parse_params(cache_t *cache,
     }
 
 
-    if (strcasecmp(key, "n-bit-counter") == 0) {
-      params->n_bit_counter = (int)strtol(value, &end, 0);
-      params->max_freq = (1 << params->n_bit_counter) - 1;
+    if (strcasecmp(key, "scaler") == 0) {
+      params->scaler = (float)strtof(value, &end);
       if (strlen(end) > 2) {
         ERROR("param parsing error, find string \"%s\" after number\n", end);
       }
-    } else if (strcasecmp(key, "print") == 0) {
+    }
+    else if (strcasecmp(key, "print") == 0) {
       printf("current parameters: %s\n", BeladyClock_current_params(cache, params));
       exit(0);
     } else {

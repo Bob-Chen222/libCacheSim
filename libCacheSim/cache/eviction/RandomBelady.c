@@ -75,6 +75,9 @@ cache_t *RandomBelady_init(const common_cache_params_t ccache_params, const char
     RandomBelady_parse_params(cache, cache_specific_params);
   }
 
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "RandomBelady-%f",
+            ((RandomBelady_params_t *)cache->eviction_params)->scaler);
+
   return cache;
 }
 
@@ -233,7 +236,14 @@ static bool can_evict(cache_t *cache, const request_t *req) {
   int64_t dist = (double)req->next_access_vtime - cache->n_req;
   int64_t threshold = ((double)cache->cache_size / miss_ratio);
 
-  if (dist > threshold * scaler) {
+  int64_t threshold_product;
+  if (scaler == 0) {
+    threshold_product = INT64_MAX;
+  } else {
+    threshold_product = threshold * scaler;
+  }
+
+  if (dist > threshold_product) {
     return true;
   } else {
     return false;

@@ -55,7 +55,7 @@ cache_t *RandomLRU_init(const common_cache_params_t ccache_params, const char *c
   common_cache_params_t ccache_params_copy = ccache_params;
   ccache_params_copy.hashpower = MAX(12, ccache_params_copy.hashpower - 8);
 
-  cache_t *cache = cache_struct_init("RandomLRU-2", ccache_params_copy, cache_specific_params);
+  cache_t *cache = cache_struct_init("RandomLRU", ccache_params_copy, cache_specific_params);
   cache->cache_init = RandomLRU_init;
   cache->cache_free = RandomLRU_free;
   cache->get = RandomLRU_get;
@@ -74,6 +74,8 @@ cache_t *RandomLRU_init(const common_cache_params_t ccache_params, const char *c
   if (cache_specific_params != NULL) {
     RandomLRU_parse_params(cache, cache_specific_params);
   }
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "RandomLRU-%f",
+              ((RandomLRU_params_t *)cache->eviction_params)->scaler);
 
   return cache;
 }
@@ -130,6 +132,7 @@ static cache_obj_t *RandomLRU_find(cache_t *cache, const request_t *req, const b
 
   if (update_cache && obj != NULL) {
     if (can_evict(cache, req)) {
+      cache->type2 ++;
       RandomLRU_remove(cache, req->obj_id);
     } else {
       obj->Random.last_access_vtime = cache->n_req;
@@ -195,6 +198,8 @@ static cache_obj_t *RandomLRU_to_evict(cache_t *cache, const request_t *req) {
 static void RandomLRU_evict(cache_t *cache, const request_t *req) {
   cache_obj_t *obj_to_evict = RandomLRU_to_evict(cache, req);
   DEBUG_ASSERT(obj_to_evict->obj_size != 0);
+  cache->type1 ++;
+  cache->type2 ++;
   cache_evict_base(cache, obj_to_evict, true);
 }
 
@@ -233,7 +238,14 @@ static bool can_evict(cache_t *cache, const request_t *req) {
   int64_t dist = (double)req->next_access_vtime - cache->n_req;
   int64_t threshold = ((double)cache->cache_size / miss_ratio);
 
-  if (dist > threshold * scaler) {
+  int64_t threshold_product;
+  if (scaler == 0) {
+    threshold_product = INT64_MAX;
+  } else {
+    threshold_product = threshold * scaler;
+  }
+
+  if (dist > threshold_product) {
     return true;
   } else {
     return false;

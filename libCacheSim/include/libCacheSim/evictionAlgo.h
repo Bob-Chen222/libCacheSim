@@ -55,6 +55,7 @@ typedef struct {
 
   int64_t miss;
   int64_t vtime;
+  double scaler;
 } BeladyClock_params_t;
 
 typedef struct {

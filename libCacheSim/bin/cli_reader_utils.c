@@ -259,7 +259,7 @@ void cal_working_set_size(reader_t *reader, int64_t *wss_obj,
     scaling_factor = 11;
   }
 
-  INFO("calculating working set size...\n");
+  // INFO("calculating working set size...\n");
   while (read_one_req(reader, req) == 0) {
     if (scaling_factor > 1 && req->obj_id % scaling_factor != 0) {
       continue;
@@ -276,8 +276,8 @@ void cal_working_set_size(reader_t *reader, int64_t *wss_obj,
   }
   *wss_obj *= scaling_factor;
   *wss_byte *= scaling_factor;
-  INFO("working set size: %ld object %ld byte\n", (long)*wss_obj,
-       (long)*wss_byte);
+  // INFO("working set size: %ld object %ld byte\n", (long)*wss_obj,
+  //      (long)*wss_byte);
 
   free_request(req);
   reset_reader(reader);

@@ -21,13 +21,13 @@ int main(int argc, char **argv) {
     ERROR("no cache size found\n");
   }
 
-  if (args.n_cache_size * args.n_eviction_algo == 1) {
-    simulate(args.reader, args.caches[0], args.report_interval, args.warmup_sec,
-             args.ofilepath, args.ignore_obj_size);
+  // if (args.n_cache_size * args.n_eviction_algo == 1) {
+  //   simulate(args.reader, args.caches[0], args.report_interval, args.warmup_sec,
+  //            args.ofilepath, args.ignore_obj_size);
 
-    free_arg(&args);
-    return 0;
-  }
+  //   free_arg(&args);
+  //   return 0;
+  // }
 
   // cache_stat_t *result = simulate_at_multi_sizes(
   //     args.reader, args.cache, args.n_cache_size, args.cache_sizes, NULL, 0,

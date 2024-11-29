@@ -488,7 +488,8 @@ static void set_cache_size(struct arguments *args, reader_t *reader) {
 void print_parsed_args(struct arguments *args) {
 #define OUTPUT_STR_LEN 1024
   char output_str[OUTPUT_STR_LEN];
-  int n = snprintf(
+  int n = 0;
+  n += snprintf(
       output_str, OUTPUT_STR_LEN - 1,
       "trace path: %s, trace_type %s, ofilepath "
       "%s, %d threads, warmup %d sec, total %d algo x %d size = %d caches",

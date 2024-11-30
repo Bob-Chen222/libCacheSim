@@ -37,7 +37,8 @@ typedef struct simulator_multithreading_params {
 static void _simulate(gpointer data, gpointer user_data) {
   sim_mt_params_t *params = (sim_mt_params_t *)user_data;
   int idx = GPOINTER_TO_UINT(data) - 1;
-  set_rand_seed(0);
+  int r = rand();
+  set_rand_seed(r);
 
   cache_stat_t *result = params->result;
   reader_t *cloned_reader = clone_reader(params->reader);

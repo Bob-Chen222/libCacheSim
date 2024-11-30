@@ -338,6 +338,7 @@ bool chained_hashtable_try_delete_v2(hashtable_t *hashtable,
  */
 bool chained_hashtable_delete_obj_id_v2(hashtable_t *hashtable,
                                         const obj_id_t obj_id) {
+  printf("we are in delete obj id\n");
   uint64_t hv = get_hash_value_int_64(&obj_id) & hashmask(hashtable->hashpower);
   cache_obj_t *cur_obj = hashtable->ptr_table[hv];
   // the hash bucket is empty
@@ -367,23 +368,54 @@ bool chained_hashtable_delete_obj_id_v2(hashtable_t *hashtable,
   return false;
 }
 
-cache_obj_t *chained_hashtable_rand_obj_v2(const hashtable_t *hashtable) {
-  // use the same lock
+// cache_obj_t *chained_hashtable_rand_obj_v2(hashtable_t *hashtable) {
+//   // use the same lock
 
+//   uint64_t pos = next_rand() & hashmask(hashtable->hashpower);
+//   while (hashtable->ptr_table[pos]->hash_next == NULL)
+//     pos = next_rand() & hashmask(hashtable->hashpower);
+//   // add readlock
+//   uint64_t *dummy = &(hashtable->ptr_table[pos]->obj_id);
+//   test_and_test_and_set(dummy);
+//   cache_obj_t *cache_obj = hashtable->ptr_table[pos]->hash_next;
+//   if (cache_obj == NULL){
+//     hashtable->ptr_table[pos]->obj_id = UINT64_MAX;
+//     return chained_hashtable_rand_obj_v2(hashtable);
+//   }else{
+//     hashtable->ptr_table[pos]->obj_id = UINT64_MAX;
+//     return cache_obj;
+//   }
+// }
+
+cache_obj_t *chained_hashtable_rand_obj_v2(hashtable_t *hashtable) {
   uint64_t pos = next_rand() & hashmask(hashtable->hashpower);
-  while (hashtable->ptr_table[pos]->hash_next == NULL)
+  int n_tries = 0;
+  while (hashtable->ptr_table[pos]->hash_next == NULL) {
+    n_tries += 1;
+    // if (n_tries > 32) {
+    //   DEBUG("shrink hash table size from 2**%d to 2**%d\n", hashtable->hashpower, hashtable->hashpower - 1);
+    //   _chained_hashtable_shrink_v2(hashtable);
+    // }
     pos = next_rand() & hashmask(hashtable->hashpower);
-  // add readlock
+  }
+
   uint64_t *dummy = &(hashtable->ptr_table[pos]->obj_id);
   test_and_test_and_set(dummy);
-  cache_obj_t *cache_obj = hashtable->ptr_table[pos]->hash_next;
-  if (cache_obj == NULL){
-    hashtable->ptr_table[pos]->obj_id = UINT64_MAX;
-    return chained_hashtable_rand_obj_v2(hashtable);
-  }else{
-    hashtable->ptr_table[pos]->obj_id = UINT64_MAX;
-    return cache_obj;
+
+  int n_obj_in_bucket = 1;
+  cache_obj_t *cur_obj = hashtable->ptr_table[pos]->hash_next;
+  while (cur_obj->hash_next) {
+    cur_obj = cur_obj->hash_next;
+    n_obj_in_bucket += 1;
   }
+  int rand_pos = next_rand() % n_obj_in_bucket;
+  cur_obj = hashtable->ptr_table[pos]->hash_next;
+  for (int i = 0; i < rand_pos; i++) {
+    cur_obj = cur_obj->hash_next;
+  }
+  // printf("n_obj_in_bucket %d, rand_pos %d\n", n_obj_in_bucket, rand_pos);
+  hashtable->ptr_table[pos]->obj_id = UINT64_MAX;
+  return cur_obj;
 }
 
 void chained_hashtable_foreach_v2(hashtable_t *hashtable,

@@ -169,6 +169,7 @@ typedef struct cache_obj {
 #endif
   // used by belady related algorithsm
   misc_metadata_t misc;
+  // char data[1000000];
 
   union {
     LFU_obj_metadata_t lfu;          // for LFU

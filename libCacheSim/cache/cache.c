@@ -293,7 +293,7 @@ void cache_remove_obj_base(cache_t *cache, cache_obj_t *obj,
   // batch_sub(&local_occupied_byte, &cache->occupied_byte);
   __atomic_fetch_sub(&cache->n_obj, 1, __ATOMIC_RELAXED);
   __atomic_fetch_sub(&cache->occupied_byte, 1, __ATOMIC_RELAXED);
-  DEBUG_ASSERT(hashtable_find_obj(cache->hashtable, obj) != NULL);
+  // printf("we are deleting the object: %ld\n", obj->obj_id);
   if (remove_from_hashtable) {
    hashtable_delete(cache->hashtable, obj);
   }

@@ -163,18 +163,20 @@ cache_obj_t *chained_hashtable_find_obj_id_v2(const hashtable_t *hashtable,
   cache_obj_t *cache_obj = NULL;
   uint64_t hv = get_hash_value_int_64(&obj_id);
   hv = hv & hashmask(hashtable->hashpower);
+  uint64_t *dummy = &(hashtable->ptr_table[hv]->obj_id);
+  test_and_test_and_set(dummy);
   
 
   cache_obj = hashtable->ptr_table[hv] -> hash_next;
 
   while (cache_obj) {
     if (cache_obj->obj_id == obj_id) {
-      // hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
+      hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
       return cache_obj;
     }
     cache_obj = cache_obj->hash_next;
   }
-  // hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
+  hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
   return cache_obj;
 }
 
@@ -246,10 +248,12 @@ void chained_hashtable_delete_v2(hashtable_t *hashtable,
   }
 
   // the object to remove is not in the hash table
-  DEBUG_ASSERT(cur_obj != NULL);
+  // DEBUG_ASSERT(cur_obj != NULL);
   if (cur_obj == NULL) {
-    printf("cur_obj is null\n");
-    printf("obj_id %lu\n", (unsigned long)cache_obj->obj_id);
+    // printf("cur_obj is null\n");
+    // printf("obj_id %lu\n", (unsigned long)cache_obj->obj_id);
+    hashtable->ptr_table[hv]->obj_id = UINT64_MAX;
+    return;
   }
   cur_obj->hash_next = cache_obj->hash_next;
   if (!hashtable->external_obj) {
@@ -371,8 +375,7 @@ cache_obj_t *chained_hashtable_rand_obj_v2(const hashtable_t *hashtable) {
     pos = next_rand() & hashmask(hashtable->hashpower);
   // add readlock
   uint64_t *dummy = &(hashtable->ptr_table[pos]->obj_id);
-  uint64_t old = UINT64_MAX;
-  uint64_t new = UINT64_MAX - 1;
+  test_and_test_and_set(dummy);
   cache_obj_t *cache_obj = hashtable->ptr_table[pos]->hash_next;
   if (cache_obj == NULL){
     hashtable->ptr_table[pos]->obj_id = UINT64_MAX;

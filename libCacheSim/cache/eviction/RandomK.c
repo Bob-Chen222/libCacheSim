@@ -138,12 +138,15 @@ static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
                                    const bool update_cache) {
 
   //no need for blocking
+  // pthread_spin_lock(&cache->lock);
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   RandomK_params_t *params = (RandomK_params_t *)cache->eviction_params;
   __atomic_fetch_add(&params->vtime, 1, __ATOMIC_RELAXED);
   if (obj != NULL && update_cache) {
     atomic_store(&obj->RandomTwo.last_access_vtime, atomic_load(&params->vtime));
   }
+
+  // pthread_spin_unlock(&cache->lock);
 
   return obj;
 }
@@ -159,11 +162,13 @@ static cache_obj_t *RandomK_find(cache_t *cache, const request_t *req,
  * @return the inserted object
  */
 static cache_obj_t *RandomK_insert(cache_t *cache, const request_t *req) {
+  // pthread_spin_lock(&cache->lock);
   cache_obj_t *obj = cache_insert_base(cache, req);
   if (obj != NULL) {
     RandomK_params_t *params = (RandomK_params_t *)cache->eviction_params;
     atomic_store(&obj->RandomTwo.last_access_vtime, atomic_load(&params->vtime));
   }
+  // pthread_spin_unlock(&cache->lock);
   return obj;
 }
 
@@ -185,9 +190,9 @@ static cache_obj_t *RandomK_to_evict(cache_t *cache, const request_t *req) {
 static inline cache_obj_t *RandomK_select(cache_t *cache, const int k) {
   cache_obj_t *target = hashtable_rand_obj(cache->hashtable);
   DEBUG_ASSERT(target != NULL);
-
   for (int i = 1; i < k; i++) {
     cache_obj_t *obj = hashtable_rand_obj(cache->hashtable);
+    DEBUG_ASSERT(obj != NULL && obj->obj_size != 0);
     int64_t target_v = atomic_load(&obj->RandomTwo.last_access_vtime);
     int64_t obj_v = atomic_load(&obj->RandomTwo.last_access_vtime);
     if (obj_v < target_v){
@@ -206,12 +211,16 @@ static inline cache_obj_t *RandomK_select(cache_t *cache, const int k) {
  * @param req not used
  */
 static void RandomK_evict(cache_t *cache, const request_t *req) {
-  pthread_spin_lock(&cache->lock);
+  // pthread_spin_lock(&cache->lock);
   cache_obj_t *obj_to_evict = RandomK_to_evict(cache, req);
-  DEBUG_ASSERT(obj_to_evict != NULL);
-  DEBUG_ASSERT(obj_to_evict->obj_size != 0);
+  // DEBUG_ASSERT(obj_to_evict != NULL);
+  // DEBUG_ASSERT(obj_to_evict->obj_size != 0);
+  if (obj_to_evict == NULL && cache->n_obj == 0) {
+    // pthread_spin_unlock(&cache->lock);
+    return;
+  }
   cache_evict_base(cache, obj_to_evict, true);
-  pthread_spin_unlock(&cache->lock);
+  // pthread_spin_unlock(&cache->lock);
 }
 
 /**

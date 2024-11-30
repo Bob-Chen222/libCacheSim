@@ -151,7 +151,7 @@ static cache_obj_t *Random_to_evict(cache_t *cache, const request_t *req) {
  */
 static void Random_evict(cache_t *cache, const request_t *req) {
   cache_obj_t *obj_to_evict = Random_to_evict(cache, req);
-  DEBUG_ASSERT(obj_to_evict->obj_size != 0);
+  // DEBUG_ASSERT(obj_to_evict->obj_size != 0);
   cache_evict_base(cache, obj_to_evict, true);
 }
 

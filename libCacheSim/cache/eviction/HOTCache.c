@@ -305,7 +305,6 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
     params -> slots_buffer = 0;
     params -> highest_freq = 0;
     params -> request_epoch = 0;
-    printf("refresh buffer\n");
   }
 
   // if update cache is false, we only check the fifo and main caches
@@ -357,7 +356,6 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
     cache_obj_t* new = hashtable_insert(cache -> hashtable, req);
     params -> buffer[params -> slots_buffer] = new;
     new -> freq = cached_obj -> freq;
-    printf("insert obj %ld into buffer with freq %d\n", new -> obj_id, new -> freq);
     params -> slots_buffer++;
   }
   return cached_obj;

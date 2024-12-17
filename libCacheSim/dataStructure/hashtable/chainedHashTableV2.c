@@ -166,9 +166,9 @@ cache_obj_t *chained_hashtable_insert_v2(hashtable_t *hashtable,
 cache_obj_t *chained_hashtable_insert_obj_v2(hashtable_t *hashtable,
                                              cache_obj_t *cache_obj) {
   DEBUG_ASSERT(hashtable->external_obj);
-  if (hashtable->n_obj > (uint64_t)(hashsize(hashtable->hashpower) *
-                                    CHAINED_HASHTABLE_EXPAND_THRESHOLD))
-    _chained_hashtable_expand_v2(hashtable);
+  // if (hashtable->n_obj > (uint64_t)(hashsize(hashtable->hashpower) *
+  //                                   CHAINED_HASHTABLE_EXPAND_THRESHOLD))
+  //   _chained_hashtable_expand_v2(hashtable);
 
   add_to_bucket(hashtable, cache_obj);
   hashtable->n_obj += 1;
@@ -320,11 +320,38 @@ bool chained_hashtable_delete_obj_id_v2(hashtable_t *hashtable,
   return false;
 }
 
-cache_obj_t *chained_hashtable_rand_obj_v2(const hashtable_t *hashtable) {
+// cache_obj_t *chained_hashtable_rand_obj_v2(const hashtable_t *hashtable) {
+//   uint64_t pos = next_rand() & hashmask(hashtable->hashpower);
+//   while (hashtable->ptr_table[pos] == NULL)
+//     pos = next_rand() & hashmask(hashtable->hashpower);
+//   return hashtable->ptr_table[pos];
+// }
+
+cache_obj_t *chained_hashtable_rand_obj_v2(hashtable_t *hashtable) {
   uint64_t pos = next_rand() & hashmask(hashtable->hashpower);
-  while (hashtable->ptr_table[pos] == NULL)
+  int n_tries = 0;
+  while (hashtable->ptr_table[pos] == NULL) {
+    // n_tries += 1;
+    // if (n_tries > 32) {
+    //   DEBUG("shrink hash table size from 2**%d to 2**%d\n", hashtable->hashpower, hashtable->hashpower - 1);
+    //   _chained_hashtable_shrink_v2(hashtable);
+    // }
     pos = next_rand() & hashmask(hashtable->hashpower);
-  return hashtable->ptr_table[pos];
+  }
+
+  int n_obj_in_bucket = 1;
+  cache_obj_t *cur_obj = hashtable->ptr_table[pos];
+  while (cur_obj->hash_next) {
+    cur_obj = cur_obj->hash_next;
+    n_obj_in_bucket += 1;
+  }
+  int rand_pos = next_rand() % n_obj_in_bucket;
+  cur_obj = hashtable->ptr_table[pos];
+  for (int i = 0; i < rand_pos; i++) {
+    cur_obj = cur_obj->hash_next;
+  }
+
+  return cur_obj;
 }
 
 void chained_hashtable_foreach_v2(hashtable_t *hashtable,

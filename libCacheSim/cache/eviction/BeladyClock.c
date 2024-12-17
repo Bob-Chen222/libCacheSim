@@ -230,6 +230,9 @@ static void BeladyClock_evict(cache_t *cache, const request_t *req) {
   miss_ratio = (double)params->miss / (double)params->vtime;
   double expected_reuse_distance = (double)cache -> cache_size / miss_ratio * params->scaler;
 
+  if (params->scaler == 0) {
+    expected_reuse_distance = INFINITY;
+  }
   cache_obj_t *obj_to_evict = params->q_tail;
   int64_t reuse_distance = 0L;
   int64_t n_round = 0;

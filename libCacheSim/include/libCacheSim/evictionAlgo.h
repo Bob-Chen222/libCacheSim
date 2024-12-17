@@ -72,7 +72,12 @@ typedef struct {
   int64_t miss;
   int64_t vtime;
   double scaler; //used for simulating the popularity decay
+  int mode;
   double scale;
+  int num_reinsert; //the number of reinsert per round of evictions
+  int counter_insert; //including 
+  int interval; //the interval is the epoch for us to skip one promotion
+  double threshold;
 } PredClock_params_t;
 
 cache_t *ARC_init(const common_cache_params_t ccache_params,

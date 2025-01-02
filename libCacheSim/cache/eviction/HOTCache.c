@@ -28,14 +28,17 @@ extern "C" {
 
 typedef struct {
     cache_t *main_cache;
-
     cache_obj_t **buffer; //a buffer that stores only 5 to 10 objects depend on the performance and will be setup in the init function
-    uint64_t buffer_size;
+
     float buffer_ratio;
+    uint64_t buffer_size;
     uint64_t main_cache_size;
+
 
     uint64_t divisor; //used for admit objects into the buffer
     int highest_freq; //highest frequency in the last epoch
+    int epoch_cur;
+
     int slots_buffer; //the current index that we are at in the buffer
     int next_refresh_time; //the next time we refresh the buffer
     int threshold_to_buffer;
@@ -48,6 +51,8 @@ typedef struct {
 
     // profiling
     int found_in_buffer;
+    int found_in_main_per_round;
+    int found_in_buffer_per_round;
     int round;
     int request_epoch;
     int num_hit_main_cache;
@@ -80,6 +85,7 @@ static inline int64_t HOTCache_get_n_obj(const cache_t *cache);
 static inline bool HOTCache_can_insert(cache_t *cache, const request_t *req);
 static void HOTCache_parse_params(cache_t *cache,
                                 const char *cache_specific_params);
+static void incr_freq(cache_obj_t *obj, int epoch_cur);
 
 // ***********************************************************************
 // ****                                                               ****
@@ -211,6 +217,10 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
   params->threshold_to_buffer = 0;
   params->promotion_saved_epoch = 0;
   params->num_hit_main_cache = 0;
+  params->epoch_cur = 0;
+  params->round = 0;
+  params->found_in_main_per_round = 0;
+  params->found_in_buffer_per_round = 0;
 
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "HOTCache-%s-%.2f-%d",
            params->main_cache_type, params->buffer_ratio, params->divisor);
@@ -224,8 +234,13 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
  */
 static void HOTCache_free(cache_t *cache) {
   HOTCache_params_t *params = (HOTCache_params_t *)cache->eviction_params;
+  printf("HOTCache: buffer hit %d\n", params->found_in_buffer);
   params->main_cache->cache_free(params->main_cache);
-  printf("num hit main cache: %d\n", params -> num_hit_main_cache);
+  // for (int i = 0; i < params->buffer_size; i++){
+  //   cache_obj_t *obj = params->buffer[i];
+  //   printf("obj id %ld\n", obj -> obj_id);
+  //   printf("obj freq %d\n", obj -> misc.freq);
+  // }
   free(params->buffer);
   free(cache->eviction_params);
   cache_struct_free(cache);
@@ -290,52 +305,63 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
                                 const bool update_cache) {
   HOTCache_params_t *params = (HOTCache_params_t *)cache->eviction_params;
   cache_obj_t *cached_obj = NULL;
-  params -> request_epoch++;
+  cache->n_req += 1;
 
   if ((params -> slots_buffer == params->buffer_size && params -> next_refresh_time == -1) || params -> next_refresh_time == cache -> n_req){
     //  expected reuse distance is cache size / miss ratio
+    printf("round %d, hit in buffer %d, hit in main cache %d\n", params -> round, params -> found_in_buffer_per_round, params -> found_in_main_per_round);
     float miss_ratio = (float)params -> miss / (float)cache -> n_req;
     int expected_reuse_distance = (int)((float)cache -> cache_size / miss_ratio);
-    if (params -> next_refresh_time == -1){
-      params -> next_refresh_time = cache -> n_req + expected_reuse_distance;
-    }else{
-      params -> next_refresh_time = cache -> n_req + expected_reuse_distance;
-    }
+    params -> next_refresh_time = cache -> n_req + expected_reuse_distance * 1;
     params -> threshold_to_buffer = params -> divisor;
     params -> slots_buffer = 0;
     params -> highest_freq = 0;
-    params -> request_epoch = 0;
+    params -> found_in_buffer_per_round = 0;
+    params -> found_in_main_per_round = 0;
+    params -> round++;
+    params -> epoch_cur++;
   }
 
   // if update cache is false, we only check the fifo and main caches
   DEBUG_ASSERT(update_cache == true); // only support this mode
   cache_obj_t *obj_buf = hashtable_find_obj_id(cache -> hashtable, req -> obj_id);
   if (obj_buf != NULL){
-    obj_buf -> freq++;
-    if (obj_buf -> freq > params -> highest_freq){
-      params -> highest_freq = obj_buf -> freq;
-    }
     params -> found_in_buffer++;
+    params -> found_in_buffer_per_round++;
+    incr_freq(obj_buf, params -> epoch_cur);
+    if (obj_buf -> misc.freq > params -> highest_freq){
+      params -> highest_freq = obj_buf -> misc.freq;
+    }
     return obj_buf;
   }
-
-
+ 
   // if the cache is in the init phase, we need to run the main cache
   cached_obj = params->main_cache->find(params->main_cache, req, update_cache);
   if (cached_obj == NULL) return NULL;
-  params -> num_hit_main_cache++;
-  cache -> type1++;
-  cached_obj->freq++;
-  if (cached_obj->freq > params->highest_freq){
-    params->highest_freq = cached_obj->freq;
+  params -> found_in_main_per_round++;
+  incr_freq(cached_obj, params -> epoch_cur);
+  if (cached_obj->misc.freq > params->highest_freq){
+    params->highest_freq = cached_obj->misc.freq;
   }
   // if it meets the threshold, we will put it into the buffer
-  if (cached_obj -> freq >= params -> threshold_to_buffer && params -> slots_buffer < params -> buffer_size){
+  if (cached_obj -> misc.freq>= params -> threshold_to_buffer && params -> slots_buffer < params -> buffer_size){
     // delete the previous object in the hashtable
     // get the candidate object
     cache_obj_t *candidate_to_delete = params -> buffer[params -> slots_buffer];
     if (candidate_to_delete && hashtable_find_obj_id(cache -> hashtable, candidate_to_delete -> obj_id)){
       hashtable_delete_obj_id(cache -> hashtable, candidate_to_delete -> obj_id);
+      // at the same time we need to move the object into the main cache
+      request_t *req_staled_obj = malloc(sizeof(request_t));
+      copy_cache_obj_to_request(req_staled_obj, candidate_to_delete);
+
+      // this will evict one and insert one at the same time and hopefully it is not in the cache
+      DEBUG_ASSERT(params -> main_cache -> get(params -> main_cache, req_staled_obj) == false);
+
+      // obj_staled->misc.freq = 0;
+      // obj_staled->misc.epoch_freq = params -> epoch_cur;
+      params -> buffer[params -> slots_buffer] = NULL;
+
+      free(req_staled_obj);
     }
 
     // do a strong check
@@ -350,12 +376,15 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
       exit(1);
     }
     if (params -> main_cache -> hashtable -> n_obj > cache -> cache_size - params -> buffer_size){
+      printf("main cache size: %ld\n", params -> main_cache -> n_obj);
+      printf("cache size: %ld\n", cache -> cache_size);
+      printf("buffer size: %ld\n", params -> buffer_size);
       ERROR("HOTCache: main cache hashtable size is not enough\n");
     }
     
     cache_obj_t* new = hashtable_insert(cache -> hashtable, req);
     params -> buffer[params -> slots_buffer] = new;
-    new -> freq = cached_obj -> freq;
+    new -> misc.freq = cached_obj -> misc.freq;
     params -> slots_buffer++;
   }
   return cached_obj;
@@ -385,7 +414,8 @@ static cache_obj_t *HOTCache_insert(cache_t *cache, const request_t *req) {
       (int64_t)obj->obj_size + (int64_t)cache->obj_md_size;
   cache->n_obj += 1;
   // every 1 million requests, we just update the buffer
-  obj -> freq = 0;
+  obj -> misc.freq = 0;
+  obj -> misc.epoch_freq = params->epoch_cur;
   return obj;
 }
 
@@ -419,7 +449,8 @@ static void HOTCache_evict(cache_t *cache, const request_t *req) {
   cache->occupied_byte -= 1; //assert occupied byte is 1
   cache->n_obj -= 1;
   // everytime we update the n_promotion
-  cache -> n_promotion = params -> main_cache -> n_promotion;
+  cache -> n_promotion = params -> main_cache -> n_promotion; 
+  // cache -> n_promotion = 0;
   return;
 }
 
@@ -474,6 +505,15 @@ static const char *HOTCache_current_params(HOTCache_params_t *params) {
   snprintf(params_str, 128, "main-cache=%s\n",
            params->main_cache->cache_name);
   return params_str;
+}
+
+static void incr_freq(cache_obj_t *obj, int epoch_cur){
+  if (obj -> misc.epoch_freq == epoch_cur){
+    obj -> misc.freq++;
+  } else{
+    obj -> misc.freq = 1;
+    obj -> misc.epoch_freq = epoch_cur;
+  }
 }
 
 static void HOTCache_parse_params(cache_t *cache,

@@ -46,6 +46,11 @@ typedef struct {
 
 typedef struct {
   int freq;
+  int epoch_freq; //used to keep track of the period the freq belongs to
+} HOTCache_metadata_t;
+
+typedef struct {
+  int freq;
 } bc_obj_metadata_t;
 
 typedef struct {
@@ -185,6 +190,7 @@ typedef struct {
   int64_t next_access_vtime;
   int32_t freq;
   void *pq_node;
+  int epoch_freq; //used to keep track of the period the freq belongs to
 } __attribute__((packed)) misc_metadata_t;
 
 // ############################## cache obj ###################################
@@ -195,7 +201,6 @@ typedef struct cache_obj {
   obj_id_t obj_id;
   uint32_t obj_size;
   uint64_t last_access_time;
-  uint32_t freq;
   pthread_mutex_t lock;
   struct {
     struct cache_obj *prev;
@@ -240,6 +245,7 @@ typedef struct cache_obj {
     lpFIFO_batch_obj_metadata_t lpFIFO_batch;
     lpFIFO_shards_obj_metadata_t lpFIFO_shards;
     delay_obj_metadata_t delay_count;
+    HOTCache_metadata_t hot_cache; 
     
 
 #if defined(ENABLE_GLCACHE) && ENABLE_GLCACHE == 1

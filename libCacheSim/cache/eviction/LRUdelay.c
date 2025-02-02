@@ -93,7 +93,7 @@ cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
     LRU_delay_parse_params(cache, cache_specific_params);
   }
   
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "LRU_delay_%f",
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "LRU_delay-%f",
            params->delay_ratio);
 
   return cache;

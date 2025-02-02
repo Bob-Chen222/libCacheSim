@@ -62,7 +62,7 @@ typedef struct {
 } HOTCache_params_t;
 
 static const char *DEFAULT_CACHE_PARAMS =
-    "main-cache=Clock,size-buffer=0.1,admission-divisor=100";
+    "main-cache=Clock,size-buffer=0.1,admission-divisor=1";
 
 // ***********************************************************************
 // ****                                                               ****
@@ -234,13 +234,7 @@ cache_t *HOTCache_init(const common_cache_params_t ccache_params,
  */
 static void HOTCache_free(cache_t *cache) {
   HOTCache_params_t *params = (HOTCache_params_t *)cache->eviction_params;
-  printf("HOTCache: buffer hit %d\n", params->found_in_buffer);
   params->main_cache->cache_free(params->main_cache);
-  // for (int i = 0; i < params->buffer_size; i++){
-  //   cache_obj_t *obj = params->buffer[i];
-  //   printf("obj id %ld\n", obj -> obj_id);
-  //   printf("obj freq %d\n", obj -> misc.freq);
-  // }
   free(params->buffer);
   free(cache->eviction_params);
   cache_struct_free(cache);
@@ -309,10 +303,10 @@ static cache_obj_t *HOTCache_find(cache_t *cache, const request_t *req,
 
   if ((params -> slots_buffer == params->buffer_size && params -> next_refresh_time == -1) || params -> next_refresh_time == cache -> n_req){
     //  expected reuse distance is cache size / miss ratio
-    printf("round %d, hit in buffer %d, hit in main cache %d\n", params -> round, params -> found_in_buffer_per_round, params -> found_in_main_per_round);
+    // printf("round %d, hit in buffer %d, hit in main cache %d\n", params -> round, params -> found_in_buffer_per_round, params -> found_in_main_per_round);
     float miss_ratio = (float)params -> miss / (float)cache -> n_req;
     int expected_reuse_distance = (int)((float)cache -> cache_size / miss_ratio);
-    params -> next_refresh_time = cache -> n_req + expected_reuse_distance * 1;
+    params -> next_refresh_time = cache -> n_req + expected_reuse_distance * INT64_MAX;
     params -> threshold_to_buffer = params -> divisor;
     params -> slots_buffer = 0;
     params -> highest_freq = 0;

@@ -111,6 +111,8 @@ static inline cache_t *create_cache(const char *trace_path,
     cache = BeladyClock_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "predclock") == 0) {
     cache = PredClock_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "age") == 0) {
+    cache = AGE_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "cr-lfu") == 0) {
     cache = CR_LFU_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lirs") == 0) {

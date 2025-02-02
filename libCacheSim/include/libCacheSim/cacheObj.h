@@ -45,6 +45,14 @@ typedef struct {
 } PredClock_obj_metadata_t;
 
 typedef struct {
+  int freq; //if freq is 0 at eviction, definitly evict it because no matter what scaler we assume it will be evicted
+  int64_t last_access_vtime; //the request time since its last hit or insertion
+  int64_t check_time; //next time to check if the object is evicted
+  int64_t insert_time;
+  int pos; //the distance from the head of the queue
+} AGE_obj_metadata_t;
+
+typedef struct {
   int freq;
   int epoch_freq; //used to keep track of the period the freq belongs to
 } HOTCache_metadata_t;
@@ -221,6 +229,7 @@ typedef struct cache_obj {
     LFU_obj_metadata_t lfu;          // for LFU
     Clock_obj_metadata_t clock;      // for Clock
     PredClock_obj_metadata_t predClock; // for PredClock
+    AGE_obj_metadata_t age;          // for AGE
     bc_obj_metadata_t bc;      // for bc
     Size_obj_metadata_t Size;        // for Size
     ARC_obj_metadata_t ARC;          // for ARC

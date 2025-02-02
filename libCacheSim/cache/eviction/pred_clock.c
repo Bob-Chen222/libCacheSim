@@ -18,7 +18,7 @@ extern "C" {
 // #define USE_BELADY
 #undef USE_BELADY
 
-static const char *DEFAULT_PARAMS = "scaler=1.5,mode=2,threshold=0.1,interval=1";
+static const char *DEFAULT_PARAMS = "scaler=1.0,mode=3,threshold=0.1,interval=1";
 static int false_negative = 0;
 static int total_negative = 0;
 
@@ -88,6 +88,8 @@ cache_t *PredClock_init(const common_cache_params_t ccache_params, const char *c
   if (cache_specific_params != NULL) {
     PredClock_parse_params(cache, cache_specific_params);
   }
+
+  printf("scaler is : %f\n", params->scaler);
 
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "PredClock-%d-%f-%d", params->mode, params->threshold, params->interval);
 

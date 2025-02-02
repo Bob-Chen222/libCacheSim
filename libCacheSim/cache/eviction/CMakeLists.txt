@@ -6,6 +6,7 @@ set(sourceC
         LFU.c
         LFUDA.c
         ARC.c
+        AGE.c
         FIFO.c
         LRU.c
         Clock.c

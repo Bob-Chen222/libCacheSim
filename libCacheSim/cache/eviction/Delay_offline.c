@@ -18,22 +18,13 @@ typedef struct {
   cache_obj_t *q_tail;
   // fields added in addition to clock-
   uint64_t delay_time;  // determines how often promotion is performed
-  double delay_ratio;
   int64_t n_insertion;
   int n_promotion;
 
   //   for offline delay
   int64_t miss;
   int64_t vtime;
-
-  // profiling
-  int64_t num_triggered;
-  int64_t num_total;
-
   uint64_t expected_eviction_age;
-  uint64_t total;
-
-
 } LRU_delay_params_t;
 
 static const char *DEFAULT_PARAMS = "delay-time=1";
@@ -98,17 +89,12 @@ cache_t *Delay_offline_init(const common_cache_params_t ccache_params, const cha
   LRU_delay_params_t *params = malloc(sizeof(LRU_delay_params_t));
   params->q_head = NULL;
   params->q_tail = NULL;
-  params->delay_ratio = 0.1;
-  params->delay_time = params->delay_ratio * cache->cache_size;
   cache->eviction_params = params;
   params->n_insertion = 0;
   params->n_promotion = 0;
   params->miss = 0;
   params->vtime = 0;
-  params->num_total = 0;
-  params->num_triggered = 0;
   params->expected_eviction_age = 0;
-  params->total = 0;
 
   if (cache_specific_params != NULL) {
     Delay_offline_parse_params(cache, cache_specific_params);
@@ -175,9 +161,7 @@ static cache_obj_t *Delay_offline_find(cache_t *cache, const request_t *req, con
   //   calculate the expected reuse distance
   double expected_eviction_age, miss_ratio, time_remaining_in_cache;
   miss_ratio = (double)params->miss / (double)params->vtime;
-  // expected_eviction_age = ((double)cache->cache_size) / miss_ratio;
   expected_eviction_age = ((double) params->expected_eviction_age);
-  // expected_eviction_age = ((double) params->expected_eviction_age / (double) params->total);
   int64_t dist_next_access = req->next_access_vtime - params->vtime;
   DEBUG_ASSERT(dist_next_access >= 0);
 
@@ -186,38 +170,13 @@ static cache_obj_t *Delay_offline_find(cache_t *cache, const request_t *req, con
   }
   
   //update the average request arrival time
-  // cache_obj->delay_count.sum_dist += (params->vtime - cache_obj->delay_count.last_hit_vtime);
-  // cache_obj->delay_count.num_hit += 1;
-  // cache_obj->delay_count.last_hit_vtime = params->vtime;
   cache_obj->delay_count.freq += 1;
-
-  // predict its next access time
-  // double average = cache_obj->delay_count.sum_dist / cache_obj->delay_count.num_hit;
-  // double next_access_dist = next_access_time(params->vtime, average, percentile);
-  // printf("next_access: %f\n", next_access);
-
-  // time_remaining_in_cache = (double)(cache->cache_size - (params->n_insertion - cache_obj->delay_count.insert_time)) /
-  //                  (double)cache->cache_size;
   time_remaining_in_cache = expected_eviction_age - (params->vtime - cache_obj->delay_count.last_promotion_vtime);
-  // int64_t diff = params->n_insertion - cache_obj->delay_count.insert_time;
-  // printf("n_insertion: %ld, insert_time: %ld\n", params->n_insertion, cache_obj->delay_count.insert_time);
-  // printf("time_remaining_in_cache: %f\n", time_remaining_in_cache);
-  // printf("expected_eviction_age: %f\n", expected_eviction_age);
   /*
   only if the next access is within (time_remaining_in_cache * expected_eviction_age, expected_eviction_age)
   we promote it
   */
-  // printf("dist_next_access: %lu\n", dist_next_access);
-  // printf("time_remaining_in_cache: %f\n", time_remaining_in_cache);
-  params->num_total +=1;
-  if (dist_next_access > time_remaining_in_cache) {
-    params->num_triggered += 1;
-  }
-  if (params->vtime % 100000 == 0) {
-    // printf("num_triggered: %ld, num_total: %ld, expected_eviction_age: %lf\n", params->num_triggered, params->num_total, expected_eviction_age);
-  }
   if (cache_obj && likely(update_cache) && dist_next_access > time_remaining_in_cache && dist_next_access < expected_eviction_age) {
-  // if (cache_obj && likely(update_cache)) {
     //  check whether the last access time is greater than the delay time
     move_obj_to_head(&params->q_head, &params->q_tail, cache_obj);
     cache->n_promotion++;
@@ -247,17 +206,13 @@ static cache_obj_t *Delay_offline_insert(cache_t *cache, const request_t *req) {
   params->n_insertion++;
   cache_obj_t *obj = cache_insert_base(cache, req);
   obj->delay_count.last_promo_vtime = params->n_insertion;
-  // obj->delay_count.insert_time = params->n_insertion;
   obj->delay_count.insert_time = params->vtime;// for profiling
 
   obj->delay_count.last_hit_vtime = params->vtime;
-  obj->delay_count.sum_dist = 0;
-  obj->delay_count.num_hit = 0;
   obj->delay_count.last_promotion_vtime = params->vtime;
   obj->delay_count.freq = 0;
 
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
-
   return obj;
 }
 
@@ -374,27 +329,6 @@ static void Delay_offline_parse_params(cache_t *cache, const char *cache_specifi
     // skip the white space
     while (params_str != NULL && *params_str == ' ') {
       params_str++;
-    }
-
-    if (strcasecmp(key, "delay-time") == 0) {
-      if (strchr(value, '.') != NULL) {
-        params->delay_time = (uint64_t)((strtof(value, &end))*cache->cache_size);
-        params->delay_ratio = strtof(value, &end);
-        if (params->delay_time == 0) {
-          params->delay_time = 1;
-        }
-      } else {
-        params->delay_time = (int)strtol(value, &end, 0);
-        if (params->delay_time == 0) {
-          params->delay_time = 1;
-        }
-        if (strlen(end) > 2) {
-          ERROR("param parsing error, find string \"%s\" after number\n", end);
-        }
-      }
-    } else {
-      ERROR("%s does not have parameter %s\n", cache->cache_name, key);
-      exit(1);
     }
   }
   free(old_params_str);

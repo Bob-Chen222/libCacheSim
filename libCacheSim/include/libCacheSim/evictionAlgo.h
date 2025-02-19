@@ -99,6 +99,8 @@ typedef struct {
   float dist_ratio;
 } AGE_params_t;
 
+
+
 cache_t *ARC_init(const common_cache_params_t ccache_params,
                   const char *cache_specific_params);
 
@@ -119,6 +121,9 @@ cache_t *Clock_init(const common_cache_params_t ccache_params,
 
 cache_t *BeladyClock_init(const common_cache_params_t ccache_params,
                           const char *cache_specific_params);
+
+cache_t *offlineFR_init(const common_cache_params_t ccache_params,
+                        const char *cache_specific_params);
 
 cache_t *PredClock_init(const common_cache_params_t ccache_params,
                         const char *cache_specific_params);
@@ -260,6 +265,12 @@ cache_t *Sieve_init(const common_cache_params_t ccache_params,
 
 cache_t *LRU_delay_init(const common_cache_params_t ccache_params,
                         const char *cache_specific_params);
+
+cache_t *Delay_offline_init(const common_cache_params_t ccache_params,
+                            const char *cache_specific_params);
+
+cache_t *Delay_online_init(const common_cache_params_t ccache_params,
+                            const char *cache_specific_params);
 
 cache_t *PredDelay_init(const common_cache_params_t ccache_params,
                         const char *cache_specific_params);

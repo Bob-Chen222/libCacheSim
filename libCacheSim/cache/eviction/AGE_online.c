@@ -1,14 +1,13 @@
 //
-//  BeladyClock, the same as FIFO-Reinsertion or second chance, is a FIFO with
-//  which inserts back some objects upon eviction
-//
-//
-//  BeladyClock.c
+// The newest implementation of AGE eviction that only prevent recent promotions of objects
+// dist_ratio is used for controlling the 
 //  libCacheSim
 //
 //  Created by Juncheng on 12/4/18.
 //  Copyright © 2018 Juncheng. All rights reserved.
 //
+
+#include <float.h>
 
 #include "../../dataStructure/hashtable/hashtable.h"
 #include "../../include/libCacheSim/evictionAlgo.h"
@@ -20,7 +19,9 @@ extern "C" {
 // #define USE_BELADY
 #undef USE_BELADY
 
-static const char *DEFAULT_PARAMS = "scaler=1.5";
+static const char *DEFAULT_PARAMS = "dist-ratio=0.1";
+static int false_negative = 0;
+static int total_negative = 0;
 
 // ***********************************************************************
 // ****                                                               ****
@@ -28,16 +29,15 @@ static const char *DEFAULT_PARAMS = "scaler=1.5";
 // ****                                                               ****
 // ***********************************************************************
 
-static void BeladyClock_parse_params(cache_t *cache,
-                               const char *cache_specific_params);
-static void BeladyClock_free(cache_t *cache);
-static bool BeladyClock_get(cache_t *cache, const request_t *req);
-static cache_obj_t *BeladyClock_find(cache_t *cache, const request_t *req,
-                               const bool update_cache);
-static cache_obj_t *BeladyClock_insert(cache_t *cache, const request_t *req);
-static cache_obj_t *BeladyClock_to_evict(cache_t *cache, const request_t *req);
-static void BeladyClock_evict(cache_t *cache, const request_t *req);
-static bool BeladyClock_remove(cache_t *cache, const obj_id_t obj_id);
+static void AGE_parse_params(cache_t *cache, const char *cache_specific_params);
+static void AGE_free(cache_t *cache);
+static bool AGE_get(cache_t *cache, const request_t *req);
+static cache_obj_t *AGE_find(cache_t *cache, const request_t *req, const bool update_cache);
+static cache_obj_t *AGE_insert(cache_t *cache, const request_t *req);
+static cache_obj_t *AGE_to_evict(cache_t *cache, const request_t *req);
+static void AGE_evict(cache_t *cache, const request_t *req);
+static bool AGE_remove(cache_t *cache, const obj_id_t obj_id);
+static bool is_retained(cache_t *cache, cache_obj_t *obj_to_evict, const double expected_reuse_distance);
 
 // ***********************************************************************
 // ****                                                               ****
@@ -46,46 +46,45 @@ static bool BeladyClock_remove(cache_t *cache, const obj_id_t obj_id);
 // ***********************************************************************
 
 /**
- * @brief initialize a BeladyClock cache
+ * @brief initialize a AGE cache
  *
  * @param ccache_params some common cache parameters
- * @param cache_specific_params BeladyClock specific parameters as a string
+ * @param cache_specific_params AGE specific parameters as a string
  */
-cache_t *BeladyClock_init(const common_cache_params_t ccache_params,
-                    const char *cache_specific_params) {
-  cache_t *cache =
-      cache_struct_init("BeladyClock", ccache_params, cache_specific_params);
-  cache->cache_init = BeladyClock_init;
-  cache->cache_free = BeladyClock_free;
-  cache->get = BeladyClock_get;
-  cache->find = BeladyClock_find;
-  cache->insert = BeladyClock_insert;
-  cache->evict = BeladyClock_evict;
-  cache->remove = BeladyClock_remove;
+cache_t *AGE_init(const common_cache_params_t ccache_params, const char *cache_specific_params) {
+  cache_t *cache = cache_struct_init("AGE", ccache_params, cache_specific_params);
+  cache->cache_init = AGE_init;
+  cache->cache_free = AGE_free;
+  cache->get = AGE_get;
+  cache->find = AGE_find;
+  cache->insert = AGE_insert;
+  cache->evict = AGE_evict;
+  cache->remove = AGE_remove;
   cache->can_insert = cache_can_insert_default;
   cache->get_n_obj = cache_get_n_obj_default;
   cache->get_occupied_byte = cache_get_occupied_byte_default;
-  cache->to_evict = BeladyClock_to_evict;
+  cache->to_evict = AGE_to_evict;
   cache->obj_md_size = 0;
 
 #ifdef USE_BELADY
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "BeladyClock_Belady");
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "AGE_Belady");
 #endif
 
-  cache->eviction_params = malloc(sizeof(BeladyClock_params_t));
-  memset(cache->eviction_params, 0, sizeof(BeladyClock_params_t));
-  BeladyClock_params_t *params = (BeladyClock_params_t *)cache->eviction_params;
+  cache->eviction_params = malloc(sizeof(AGE_params_t));
+  memset(cache->eviction_params, 0, sizeof(AGE_params_t));
+  AGE_params_t *params = (AGE_params_t *)cache->eviction_params;
   params->q_head = NULL;
   params->q_tail = NULL;
   params->n_bit_counter = 1;
   params->max_freq = 1;
+  params->counter_insert = 0;
 
-  BeladyClock_parse_params(cache, DEFAULT_PARAMS);
+  AGE_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
-    BeladyClock_parse_params(cache, cache_specific_params);
+    AGE_parse_params(cache, cache_specific_params);
   }
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "BeladyClock-%f",
-             params->scaler);
+
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "AGE-%f", params->dist_ratio);
 
   return cache;
 }
@@ -95,7 +94,9 @@ cache_t *BeladyClock_init(const common_cache_params_t ccache_params,
  *
  * @param cache
  */
-static void BeladyClock_free(cache_t *cache) {
+static void AGE_free(cache_t *cache) {
+  AGE_params_t *params = (AGE_params_t *)cache->eviction_params;
+  double fn_rate = (double) false_negative / (double) total_negative;
   free(cache->eviction_params);
   cache_struct_free(cache);
 }
@@ -119,9 +120,7 @@ static void BeladyClock_free(cache_t *cache) {
  * @param req
  * @return true if cache hit, false if cache miss
  */
-static bool BeladyClock_get(cache_t *cache, const request_t *req) {
-  return cache_get_base(cache, req);
-}
+static bool AGE_get(cache_t *cache, const request_t *req) { return cache_get_base(cache, req); }
 
 // ***********************************************************************
 // ****                                                               ****
@@ -139,16 +138,19 @@ static bool BeladyClock_get(cache_t *cache, const request_t *req) {
  *  and if the object is expired, it is removed from the cache
  * @return true on hit, false on miss
  */
-static cache_obj_t *BeladyClock_find(cache_t *cache, const request_t *req,
-                               const bool update_cache) {
-  BeladyClock_params_t *params = (BeladyClock_params_t *)cache->eviction_params;
+static cache_obj_t *AGE_find(cache_t *cache, const request_t *req, const bool update_cache) {
+  AGE_params_t *params = (AGE_params_t *)cache->eviction_params;
   params->vtime += 1;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
-    if (obj->clock.freq < params->max_freq) {
-      obj->clock.freq += 1;
+    if (obj->age.freq < params->max_freq) {
+      // added a threshold!!
+      double threshold = params -> dist_ratio;
+      if (params->counter_insert - obj->age.pos >= threshold * cache -> cache_size) {
+        obj->age.freq += 1; 
+      }
     }
-    obj->clock.next_access_vtime = req->next_access_vtime;
+    obj->age.last_access_vtime = params->vtime;
 #ifdef USE_BELADY
     obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -167,15 +169,17 @@ static cache_obj_t *BeladyClock_find(cache_t *cache, const request_t *req,
  * @param req
  * @return the inserted object
  */
-static cache_obj_t *BeladyClock_insert(cache_t *cache, const request_t *req) {
-  BeladyClock_params_t *params = (BeladyClock_params_t *)cache->eviction_params;
-  params ->miss += 1;
+static cache_obj_t *AGE_insert(cache_t *cache, const request_t *req) {
+  AGE_params_t *params = (AGE_params_t *)cache->eviction_params;
+  params->miss += 1;
+  params->counter_insert += 1;
 
   cache_obj_t *obj = cache_insert_base(cache, req);
-  obj->clock.next_access_vtime = req->next_access_vtime;
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
-  obj->clock.freq = 0;
+  obj->age.last_access_vtime = params->vtime;
+  obj->age.freq = 0;
+  obj->age.pos = params->counter_insert;
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -193,15 +197,15 @@ static cache_obj_t *BeladyClock_insert(cache_t *cache, const request_t *req) {
  * @param cache the cache
  * @return the object to be evicted
  */
-static cache_obj_t *BeladyClock_to_evict(cache_t *cache, const request_t *req) {
-  BeladyClock_params_t *params = (BeladyClock_params_t *)cache->eviction_params;
+static cache_obj_t *AGE_to_evict(cache_t *cache, const request_t *req) {
+  AGE_params_t *params = (AGE_params_t *)cache->eviction_params;
 
   int n_round = 0;
   cache_obj_t *obj_to_evict = params->q_tail;
 #ifdef USE_BELADY
   while (obj_to_evict->next_access_vtime != INT64_MAX) {
 #else
-  while (obj_to_evict->clock.freq - n_round >= 1) {
+  while (obj_to_evict->age.freq - n_round >= 1) {
 #endif
     obj_to_evict = obj_to_evict->queue.prev;
     if (obj_to_evict == NULL) {
@@ -222,36 +226,25 @@ static cache_obj_t *BeladyClock_to_evict(cache_t *cache, const request_t *req) {
  * @param req not used
  * @param evicted_obj if not NULL, return the evicted object to caller
  */
-static void BeladyClock_evict(cache_t *cache, const request_t *req) {
-  BeladyClock_params_t *params = (BeladyClock_params_t *)cache->eviction_params;
+static void AGE_evict(cache_t *cache, const request_t *req) {
+  AGE_params_t *params = (AGE_params_t *)cache->eviction_params;
   double miss_ratio;
   miss_ratio = (double)params->miss / (double)params->vtime;
-  double expected_reuse_distance = (double)cache -> cache_size / miss_ratio * params->scaler;
+  double expected_reuse_distance = (double)cache->cache_size / miss_ratio;
 
-  if (params->scaler == 0) {
-    expected_reuse_distance = INFINITY;
-  }
   cache_obj_t *obj_to_evict = params->q_tail;
-  int64_t reuse_distance = 0L;
-  int64_t n_round = 0;
-  if (obj_to_evict -> clock.next_access_vtime != INT64_MAX) {
-    reuse_distance = obj_to_evict->clock.next_access_vtime - params->vtime;
-  }else{
-    reuse_distance = INT64_MAX;
-  }
-  while (obj_to_evict->clock.freq != 0 && reuse_distance != INT64_MAX && reuse_distance <= expected_reuse_distance) {
-    if (obj_to_evict -> clock.check_time == params->vtime) {
-      // printf("check time reached\n");
-      break;
-    }
-    obj_to_evict->clock.freq -= 1;
+
+//   bool retained = is_retained(cache, obj_to_evict, expected_reuse_distance);
+  while (obj_to_evict->age.freq > 0 && obj_to_evict->age.check_time != params->vtime) {
+    params->counter_insert += 1;
+    obj_to_evict->age.freq -= 1;
     params->n_obj_rewritten += 1;
     params->n_byte_rewritten += obj_to_evict->obj_size;
     move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
     cache->n_promotion += 1;
-    obj_to_evict->clock.check_time = params->vtime;
+    obj_to_evict->age.check_time = params->vtime;
+    obj_to_evict->age.pos = params->counter_insert;
     obj_to_evict = params->q_tail;
-    reuse_distance = obj_to_evict->clock.next_access_vtime - params->vtime;
   }
 
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
@@ -273,8 +266,8 @@ static void BeladyClock_evict(cache_t *cache, const request_t *req) {
  * @param cache
  * @param obj
  */
-static void BeladyClock_remove_obj(cache_t *cache, cache_obj_t *obj) {
-  BeladyClock_params_t *params = (BeladyClock_params_t *)cache->eviction_params;
+static void AGE_remove_obj(cache_t *cache, cache_obj_t *obj) {
+  AGE_params_t *params = (AGE_params_t *)cache->eviction_params;
 
   DEBUG_ASSERT(obj != NULL);
   remove_obj_from_list(&params->q_head, &params->q_tail, obj);
@@ -294,33 +287,32 @@ static void BeladyClock_remove_obj(cache_t *cache, cache_obj_t *obj) {
  * @return true if the object is removed, false if the object is not in the
  * cache
  */
-static bool BeladyClock_remove(cache_t *cache, const obj_id_t obj_id) {
+static bool AGE_remove(cache_t *cache, const obj_id_t obj_id) {
   cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_id);
   if (obj == NULL) {
     return false;
   }
 
-  BeladyClock_remove_obj(cache, obj);
+  AGE_remove_obj(cache, obj);
 
   return true;
 }
+
 
 // ***********************************************************************
 // ****                                                               ****
 // ****                  parameter set up functions                   ****
 // ****                                                               ****
 // ***********************************************************************
-static const char *BeladyClock_current_params(cache_t *cache,
-                                        BeladyClock_params_t *params) {
+static const char *AGE_current_params(cache_t *cache, AGE_params_t *params) {
   static __thread char params_str[128];
-  snprintf(params_str, 128, "n-bit-counter=%d\n", params->n_bit_counter);
+  snprintf(params_str, 128, "dist-ratio=%d\n", params->dist_ratio);
 
   return params_str;
 }
 
-static void BeladyClock_parse_params(cache_t *cache,
-                               const char *cache_specific_params) {
-  BeladyClock_params_t *params = (BeladyClock_params_t *)cache->eviction_params;
+static void AGE_parse_params(cache_t *cache, const char *cache_specific_params) {
+  AGE_params_t *params = (AGE_params_t *)cache->eviction_params;
   char *params_str = strdup(cache_specific_params);
   char *old_params_str = params_str;
   char *end;
@@ -336,19 +328,20 @@ static void BeladyClock_parse_params(cache_t *cache,
       params_str++;
     }
 
-
-    if (strcasecmp(key, "scaler") == 0) {
-      params->scaler = (float)strtof(value, &end);
+    if (strcasecmp(key, "dist-ratio") == 0) {
+      params->n_bit_counter = 1;
+      params->dist_ratio = (float)strtod(value, &end);
+      params->max_freq = 1;
       if (strlen(end) > 2) {
         ERROR("param parsing error, find string \"%s\" after number\n", end);
       }
-    }
-    else if (strcasecmp(key, "print") == 0) {
-      printf("current parameters: %s\n", BeladyClock_current_params(cache, params));
+    } else if (strcasecmp(key, "print") == 0) {
+      printf("current parameters: %s\n", AGE_current_params(cache, params));
       exit(0);
-    } else {
-      ERROR("%s does not have parameter %s, example parameters %s\n",
-            cache->cache_name, key, BeladyClock_current_params(cache, params));
+    }
+    else {
+      ERROR("%s does not have parameter %s, example parameters %s\n", cache->cache_name, key,
+            AGE_current_params(cache, params));
       exit(1);
     }
   }

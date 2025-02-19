@@ -53,6 +53,25 @@ typedef struct {
 } AGE_obj_metadata_t;
 
 typedef struct {
+  int freq; //if freq is 0 at eviction, definitly evict it because no matter what scaler we assume it will be evicted
+  int64_t last_access_vtime; //the request time since its last hit or insertion
+  int64_t check_time; //next time to check if the object is evicted
+  int64_t insert_time;
+  int pos; //the distance from the head of the queue
+
+  bool is_hit_front; //this is initalized as false and if there was a hit in the front of the queue, it is set to true
+  bool is_reinserted; //this is initalized as false and if the object is reinserted, it is set to true
+} AGEOF_obj_metadata_t;
+
+typedef struct {
+  int freq; //if freq is 0 at eviction, definitly evict it because no matter what scaler we assume it will be evicted
+  int64_t last_access_vtime; //the request time since its last hit or insertion
+  int64_t check_time; //next time to check if the object is evicted
+  int64_t insert_time;
+  int pos; //the distance from the head of the queue
+} AGEON_obj_metadata_t;
+
+typedef struct {
   int freq;
   int epoch_freq; //used to keep track of the period the freq belongs to
 } HOTCache_metadata_t;
@@ -133,10 +152,14 @@ typedef struct {
 typedef struct {
   uint64_t last_promo_vtime;
   uint64_t last_promotion;
-  // int freq;
+  int freq;
   // float scaler;
-  uint64_t last_hit_vtime;
-  // uint64_t sum;
+  uint64_t last_hit_vtime; //measured in number of requests
+  int64_t insert_time; //measured in number of insertions
+  int64_t last_promotion_vtime; //measured in number of requests
+
+  uint64_t num_hit;
+  uint64_t sum_dist;
 }delay_obj_metadata_t;
 
 typedef struct {
@@ -230,6 +253,8 @@ typedef struct cache_obj {
     Clock_obj_metadata_t clock;      // for Clock
     PredClock_obj_metadata_t predClock; // for PredClock
     AGE_obj_metadata_t age;          // for AGE
+    AGEOF_obj_metadata_t ageof;      // for AGEOF
+    AGEON_obj_metadata_t ageon;      // for AGEON
     bc_obj_metadata_t bc;      // for bc
     Size_obj_metadata_t Size;        // for Size
     ARC_obj_metadata_t ARC;          // for ARC

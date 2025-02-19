@@ -11,6 +11,7 @@ set(sourceC
         LRU.c
         Clock.c
         BeladyClock.c
+        offlineFR.c
         pred_clock.c
         SLRU.c
         SLRUv0.c
@@ -31,6 +32,8 @@ set(sourceC
         LRUProb.c
         pred_prob.c
         LRUdelay.c
+        Delay_offline.c
+        Delay_online.c
         pred_delay.c
         LRUdelayv1.c
         QDLP.c

@@ -48,7 +48,6 @@ static cache_obj_t *Delay_offline_insert(cache_t *cache, const request_t *req);
 static cache_obj_t *Delay_offline_to_evict(cache_t *cache, const request_t *req);
 static void Delay_offline_evict(cache_t *cache, const request_t *req);
 static bool Delay_offline_remove(cache_t *cache, const obj_id_t obj_id);
-double next_access_time(double prev_arrival, double mean_interarrival, double percentile);
 
 static double percentile = 0.5; //parameter
 
@@ -172,6 +171,12 @@ static cache_obj_t *Delay_offline_find(cache_t *cache, const request_t *req, con
   //update the average request arrival time
   cache_obj->delay_count.freq += 1;
   time_remaining_in_cache = expected_eviction_age - (params->vtime - cache_obj->delay_count.last_promotion_vtime);
+
+
+  // printf("dist_next_access: %f\n", (double)dist_next_access);
+  // printf("expected_eviction_age: %f\n", expected_eviction_age);
+  // printf("\n");
+
   /*
   only if the next access is within (time_remaining_in_cache * expected_eviction_age, expected_eviction_age)
   we promote it
@@ -247,10 +252,16 @@ static void Delay_offline_evict(cache_t *cache, const request_t *req) {
   LRU_delay_params_t *params = (LRU_delay_params_t *)cache->eviction_params;
   cache_obj_t *obj_to_evict = params->q_tail;
   obj_to_evict->delay_count.last_promo_vtime = 0;
-  double eviction_age = (double)params->vtime - obj_to_evict->delay_count.insert_time;
+  double eviction_age = (double)(params->vtime - obj_to_evict->delay_count.insert_time);
+  if (eviction_age > -0.1 && eviction_age < 0.1) {
+    printf("eviction_age: %f\n", eviction_age);
+  }
   if (obj_to_evict->delay_count.freq == 0) {
-    double weighted_avg = 0.15 * eviction_age + 0.85 * (double)params->expected_eviction_age;
+    double weighted_avg1 = 0.15 * eviction_age;
+    double weighted_avg2 = 0.85 * (double)params->expected_eviction_age;
+    double weighted_avg = weighted_avg1 + weighted_avg2;
     params->expected_eviction_age = weighted_avg;
+    
   }
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
   cache_remove_obj_base(cache, obj_to_evict, true);
@@ -332,17 +343,6 @@ static void Delay_offline_parse_params(cache_t *cache, const char *cache_specifi
     }
   }
   free(old_params_str);
-}
-
-double next_access_time(double prev_arrival, double mean_interarrival, double percentile) {
-    // Compute lambda from the given mean inter-arrival time
-    double lambda = 1.0 / mean_interarrival;
-    double p = percentile;
-    // Compute the percentile value using the inverse CDF of Exp(lambda)
-    double X_p = -log(1 - p) / lambda;
-
-    // Compute and return the estimated next access time
-    return prev_arrival + X_p;
 }
 
 #ifdef __cplusplus

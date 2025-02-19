@@ -109,6 +109,12 @@ static inline cache_t *create_cache(const char *trace_path,
     cache = Clock_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "beladyclock") == 0) {
     cache = BeladyClock_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "offlineFR") == 0) {
+    cache = offlineFR_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "offlinedelay") == 0) {
+    cache = Delay_offline_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "onlinedelay") == 0) {
+    cache = Delay_online_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "predclock") == 0) {
     cache = PredClock_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "age") == 0) {

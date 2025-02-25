@@ -231,7 +231,8 @@ typedef struct cache_obj {
   struct cache_obj *hash_f_next;
   obj_id_t obj_id;
   uint32_t obj_size;
-  uint64_t last_access_time;
+  uint64_t last_access_time; //measured as the number of requests
+  bool is_promoted;
   pthread_mutex_t lock;
   struct {
     struct cache_obj *prev;

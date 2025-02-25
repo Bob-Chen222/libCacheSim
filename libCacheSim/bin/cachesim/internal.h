@@ -54,6 +54,8 @@ struct arguments {
 
 void parse_cmd(int argc, char *argv[], struct arguments *args);
 
+void cache_reset(struct arguments *args);
+
 void free_arg(struct arguments *args);
 
 void simulate(reader_t *reader, cache_t *cache, int report_interval,

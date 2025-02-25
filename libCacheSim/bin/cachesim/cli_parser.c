@@ -349,6 +349,11 @@ void parse_cmd(int argc, char *argv[], struct arguments *args) {
   print_parsed_args(args);
 }
 
+void cache_reset(struct arguments *args) {
+  args->caches[0] = create_cache(args->trace_path, args->eviction_algo[0], args->cache_sizes[0],
+               args->eviction_params, args->consider_obj_metadata);
+}
+
 /**
  * @brief parse the command line eviction_algo arguments
  * the given input is a string, e.g., "LRU,LFU"

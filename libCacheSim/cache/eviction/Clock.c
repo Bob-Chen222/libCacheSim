@@ -147,6 +147,11 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req,
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
+    if (obj->is_promoted && cache->mode_optimal_search){
+      cache->if_promote[obj->last_access_time] = true;
+      obj->is_promoted = false;
+    }
+    obj->last_access_time = cache->n_req;
     if (obj->clock.freq < params->max_freq) {
       obj->clock.freq += 1;
     }
@@ -174,6 +179,8 @@ static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
   obj->clock.freq = 0;
+  obj->is_promoted = false;
+  obj->last_access_time = cache->n_req;
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -224,12 +231,13 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
 
   cache_obj_t *obj_to_evict = params->q_tail;
-  while (obj_to_evict->clock.freq >= 1) {
+  while (obj_to_evict->clock.freq >= 1 && (!cache->mode_optimal_search || cache->version_num == 0 || cache->if_promote[obj_to_evict->last_access_time])) {
     obj_to_evict->clock.freq -= 1;
     params->n_obj_rewritten += 1;
     params->n_byte_rewritten += obj_to_evict->obj_size;
     move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
     cache -> n_promotion += 1;
+    obj_to_evict->is_promoted = true;
     obj_to_evict = params->q_tail;
   }
 

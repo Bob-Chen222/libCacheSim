@@ -188,6 +188,12 @@ cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
                              const bool update_cache) {
   cache_obj_t *cache_obj = hashtable_find(cache->hashtable, req);
 
+  // check the version number
+  if (cache -> version_num != 0){
+    char file_name[50];
+    snprintf(file_name, 50, "version_%d.txt", cache -> version_num);
+  }
+
   // "update_cache = true" means that it is a real user request, use handle_find
   // to update prefetcher's state
   if (cache->prefetcher && cache->prefetcher->handle_find && update_cache) {

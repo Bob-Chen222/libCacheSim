@@ -80,10 +80,10 @@ void simulate(reader_t *reader, cache_t *cache, int report_interval,
   } else {
     snprintf(output_str, 1024,
             "%s %s cache size %8ld, %16lu req, miss ratio %.4lf, throughput "
-            "%.2lf MQPS\n",
+            "%.2lf MQPS, promotion %ld\n",
             reader->trace_path, cache->cache_name, cache->cache_size,
             (unsigned long)req_cnt, (double)miss_cnt / (double)req_cnt,
-            (double)req_cnt / 1000000.0 / runtime);
+            (double)req_cnt / 1000000.0 / runtime, cache->n_promotion);
   }
 
 #pragma GCC diagnostic pop

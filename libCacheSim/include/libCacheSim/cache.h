@@ -135,6 +135,9 @@ struct cache {
   int64_t type3;
   int64_t type4;
   int64_t type5;
+  int64_t version_num;
+  bool *if_promote;
+  bool mode_optimal_search;
 
   uint64_t sum_demotion_time;
   uint64_t num_demotion_obj;

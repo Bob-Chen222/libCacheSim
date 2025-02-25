@@ -21,9 +21,36 @@ int main(int argc, char **argv) {
     ERROR("no cache size found\n");
   }
 
+  // used for simulating a trace multiple rounds
+  if (args.n_cache_size * args.n_eviction_algo == 1) {
+    int64_t size = 8000000;
+    bool *if_promote = (bool *)malloc(sizeof(bool) * 8000000);
+    for (int i = 0; i < size; i++) {
+      if_promote[i] = false;
+    }
+    int version_num = 0;
+    args.caches[0]->if_promote = if_promote;
+    args.caches[0]->version_num = version_num;
+    args.caches[0]->mode_optimal_search = true;
+
+    for (int i = 0; i < 3; i++){
+      simulate(args.reader, args.caches[0], args.report_interval, args.warmup_sec,
+               args.ofilepath, args.ignore_obj_size);
+      reset_reader(args.reader);
+      cache_reset(&args);
+      version_num++;
+      args.caches[0]->version_num = version_num;
+      args.caches[0]->n_req = 0;
+      args.caches[0]->if_promote = if_promote;
+      args.caches[0]->mode_optimal_search = true;
+    }
+    free_arg(&args);
+    return 0;
+  }
+
   // if (args.n_cache_size * args.n_eviction_algo == 1) {
-  //   simulate(args.reader, args.caches[0], args.report_interval, args.warmup_sec,
-  //            args.ofilepath, args.ignore_obj_size);
+    // simulate(args.reader, args.caches[0], args.report_interval, args.warmup_sec,
+            //  args.ofilepath, args.ignore_obj_size);
 
   //   free_arg(&args);
   //   return 0;

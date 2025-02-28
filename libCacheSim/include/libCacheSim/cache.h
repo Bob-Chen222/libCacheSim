@@ -136,8 +136,13 @@ struct cache {
   int64_t type4;
   int64_t type5;
   int64_t version_num;
-  bool *if_promote;
+  int *if_promote;
   bool mode_optimal_search;
+  int num_stats; //whatever you want to investigate
+  int num_stats2; //whatever you want to investigate
+  int num_stats3; //whatever you want to investigate
+  int num_stats4; //whatever you want to investigate
+  int num_stats5; //whatever you want to investigate
 
   uint64_t sum_demotion_time;
   uint64_t num_demotion_obj;

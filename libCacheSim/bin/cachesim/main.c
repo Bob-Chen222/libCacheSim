@@ -24,16 +24,25 @@ int main(int argc, char **argv) {
   // used for simulating a trace multiple rounds
   if (args.n_cache_size * args.n_eviction_algo == 1) {
     int64_t size = 8000000;
-    bool *if_promote = (bool *)malloc(sizeof(bool) * 8000000);
+    int *if_promote = (int *)malloc(sizeof(int) * 8000000);
     for (int i = 0; i < size; i++) {
-      if_promote[i] = false;
+      if_promote[i] = -1;
     }
     int version_num = 0;
     args.caches[0]->if_promote = if_promote;
     args.caches[0]->version_num = version_num;
     args.caches[0]->mode_optimal_search = true;
 
-    for (int i = 0; i < 3; i++){
+    for (int i = 0; i < 2; i++){
+      int count = 0;
+      printf("version_num: %d\n", version_num);
+      for (int i = 0; i < 8000000; i++) {
+        if (args.caches[0]->if_promote[i] == version_num) {
+          count++;
+        }
+        // check the number of requests that set to be the version number
+      }
+      printf("the number of requests that are set to be the version number %d: %d\n", version_num, count);
       simulate(args.reader, args.caches[0], args.report_interval, args.warmup_sec,
                args.ofilepath, args.ignore_obj_size);
       reset_reader(args.reader);

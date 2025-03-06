@@ -147,16 +147,21 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req, const bool 
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
+    // if (obj->obj_id == 35005651){
+    //     printf("obj id: %ld\n", obj->obj_id);
+    //     printf("obj last access time: %ld\n", obj->last_access_time);
+    //     printf("obj cur access time: %ld\n", cache->n_req);
+    // }
     if (cache->if_promote[obj->last_access_time] == cache->version_num && !obj->is_promoted) {
       // check how many requests are actually hit hit
       cache->num_stats3++;
     }
     if (obj->is_promoted && cache->mode_optimal_search) {
       cache->if_promote[obj->last_access_time] = cache->version_num + 1;
-      printf("obj id: %ld\n", obj->obj_id);
-      printf("obj last access time: %d\n", obj->last_access_time);
-      printf("obj version num: %d\n", cache->version_num);
-      printf("obj cur access time: %d\n", cache->n_req);
+      // printf("obj id: %ld\n", obj->obj_id);
+      // printf("obj last access time: %d\n", obj->last_access_time);
+      // // printf("obj version num: %d\n", cache->version_num);
+      // printf("obj cur access time: %d\n", cache->n_req);
       obj->is_promoted = false;
       cache->num_stats2++;
     }
@@ -164,6 +169,10 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req, const bool 
     if (obj->clock.freq < params->max_freq) {
       obj->clock.freq += 1;
     }
+    if (UINT64_MAX != cache -> time_downgrade[cache -> n_req]){
+      obj->clock.freq = 0;
+    }
+
 #ifdef USE_BELADY
     obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -190,6 +199,7 @@ static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
   obj->clock.freq = 0;
   obj->is_promoted = false;
   obj->last_access_time = cache->n_req;
+  obj->last_promote_time = 0;
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -252,20 +262,21 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
 
   cache_obj_t *obj_to_evict = params->q_tail;
-  while (obj_to_evict->clock.freq >= 1 && is_threshold(cache, obj_to_evict)) {
+  // while (obj_to_evict->clock.freq >= 1 && is_threshold(cache, obj_to_evict)) {
+    while (obj_to_evict->clock.freq >= 1) {
     obj_to_evict->clock.freq -= 1;
     params->n_obj_rewritten += 1;
     params->n_byte_rewritten += obj_to_evict->obj_size;
     move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
     cache->n_promotion += 1;
+    obj_to_evict->last_promote_time = cache->n_req;
     obj_to_evict->is_promoted = true;
     obj_to_evict = params->q_tail;
   }
-  if (obj_to_evict->clock.freq == 0 && is_threshold(cache, obj_to_evict)) {
-    cache->num_stats++;
-  }
-  if (obj_to_evict->is_promoted && cache->mode_optimal_search) {
-   cache->num_stats5++;
+
+  if (obj_to_evict->last_promote_time != 0 && obj_to_evict->clock.freq == 0){
+    // that means the promotion failed
+    cache->time_downgrade[obj_to_evict->last_access_time] = cache->version_num + 1;
   }
 
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);

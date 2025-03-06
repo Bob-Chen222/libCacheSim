@@ -137,6 +137,7 @@ struct cache {
   int64_t type5;
   int64_t version_num;
   int *if_promote;
+  uint64_t *time_downgrade;
   bool mode_optimal_search;
   int num_stats; //whatever you want to investigate
   int num_stats2; //whatever you want to investigate

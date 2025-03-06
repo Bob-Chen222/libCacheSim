@@ -23,20 +23,23 @@ int main(int argc, char **argv) {
 
   // used for simulating a trace multiple rounds
   if (args.n_cache_size * args.n_eviction_algo == 1) {
-    int64_t size = 8000000;
-    int *if_promote = (int *)malloc(sizeof(int) * 8000000);
+    int64_t size = 80000000;
+    int *if_promote = (int *)malloc(sizeof(int) * size);
+    uint64_t *time_downgrade = (uint64_t *)malloc(sizeof(int) * size);
     for (int i = 0; i < size; i++) {
       if_promote[i] = -1;
+      time_downgrade[i] = UINT64_MAX;
     }
     int version_num = 0;
     args.caches[0]->if_promote = if_promote;
+    args.caches[0]->time_downgrade = time_downgrade;
     args.caches[0]->version_num = version_num;
     args.caches[0]->mode_optimal_search = true;
 
-    for (int i = 0; i < 2; i++){
+    for (int i = 0; i < 10; i++){
       int count = 0;
       printf("version_num: %d\n", version_num);
-      for (int i = 0; i < 8000000; i++) {
+      for (int i = 0; i < size; i++) {
         if (args.caches[0]->if_promote[i] == version_num) {
           count++;
         }
@@ -51,6 +54,7 @@ int main(int argc, char **argv) {
       args.caches[0]->version_num = version_num;
       args.caches[0]->n_req = 0;
       args.caches[0]->if_promote = if_promote;
+      args.caches[0]->time_downgrade = time_downgrade;
       args.caches[0]->mode_optimal_search = true;
     }
     free_arg(&args);

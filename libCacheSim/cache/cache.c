@@ -216,7 +216,7 @@ cache_obj_t *cache_find_base(cache_t *cache, const request_t *req,
       cache_obj->misc.next_access_vtime = req->next_access_vtime;
       cache_obj->misc.freq += 1;
     }
-    cache_obj->last_access_time = cache->n_insert;
+    // cache_obj->last_access_time = cache -> n_req;
   }
 
   return cache_obj;

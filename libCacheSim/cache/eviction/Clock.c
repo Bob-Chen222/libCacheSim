@@ -99,9 +99,6 @@ cache_t *Clock_init(const common_cache_params_t ccache_params, const char *cache
  * @param cache
  */
 static void Clock_free(cache_t *cache) {
-  printf("previous round confirmed that needed promoted but the later it is evicted because never hit: %d\n", cache->num_stats);
-  printf("the number of requests that are reinserted and get a hit : %d\n", cache->num_stats2);
-  printf("the requests that are supposed to be promoted but is replaced by the hit at the same round: %d\n", cache->num_stats3);
   free(cache->eviction_params);
   cache_struct_free(cache);
 }

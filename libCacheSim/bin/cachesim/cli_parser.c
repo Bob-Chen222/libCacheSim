@@ -350,8 +350,10 @@ void parse_cmd(int argc, char *argv[], struct arguments *args) {
 }
 
 void cache_reset(struct arguments *args) {
-  args->caches[0] = create_cache(args->trace_path, args->eviction_algo[0], args->cache_sizes[0],
-               args->eviction_params, args->consider_obj_metadata);
+  for (int i = 0; i < args->n_eviction_algo * args->n_cache_size; i++) {
+    args->caches[i] = create_cache(args->trace_path, args->eviction_algo[0], args->cache_sizes[i],
+                args->eviction_params, args->consider_obj_metadata);
+  }
 }
 
 /**

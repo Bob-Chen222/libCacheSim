@@ -176,6 +176,7 @@ static cache_obj_t *Delay_online_find(cache_t *cache, const request_t *req, cons
   }
   
   //update the average request arrival time
+  double last_arrival_interval = (double)params->vtime - (double)cache_obj->delay_count.last_hit_vtime;
   cache_obj->delay_count.freq += 1;
   cache_obj->delay_count.sum_dist += (params->vtime - cache_obj->delay_count.last_hit_vtime);
   cache_obj->delay_count.last_hit_vtime = params->vtime;
@@ -183,10 +184,15 @@ static cache_obj_t *Delay_online_find(cache_t *cache, const request_t *req, cons
 
   //calculate next access time
   double arrival_average = (double)cache_obj->delay_count.sum_dist / ((double)cache_obj->delay_count.freq);
-  double time_next_access = next_access_time(params->vtime, arrival_average, params->percentile);
+  double time_next_access = next_access_time(params->vtime, last_arrival_interval, params->percentile);
 
   double dist_next_access_predicted = (double)req->next_access_vtime - (double)params->vtime;
-  double dist_next_access = (time_next_access - (double)params->vtime);
+  double dist_next_access = (time_next_access - (double)params->vtime) * cache_obj->delay_count.scale;
+  cache_obj->delay_count.scale = params->percentile * cache_obj->delay_count.scale;
+  // printf("dist_next_access: %f\n", dist_next_access);
+  // printf("dist_next_access_predicted: %f\n", dist_next_access_predicted);
+  // printf("average arrival: %f\n", arrival_average);
+  // printf("total access: %d\n", cache_obj->delay_count.freq);
 
   bool res1 = (dist_next_access_predicted > time_remaining_in_cache && dist_next_access_predicted < expected_eviction_age);
   bool res2 = (dist_next_access > time_remaining_in_cache && dist_next_access < expected_eviction_age);
@@ -245,6 +251,7 @@ static cache_obj_t *Delay_online_insert(cache_t *cache, const request_t *req) {
   obj->delay_count.last_promotion_vtime = params->vtime;
   obj->delay_count.freq = 0;
   obj->delay_count.sum_dist = 0;
+  obj->delay_count.scale = 1.0;
 
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
   return obj;
@@ -383,12 +390,13 @@ static void Delay_online_parse_params(cache_t *cache, const char *cache_specific
   free(old_params_str);
 }
 
-double next_access_time(double prev_arrival, double mean_interarrival, double percentile) {
+double next_access_time(double prev_arrival, double last_interarrival, double scale) {
     // Compute lambda from the given mean inter-arrival time
-    double lambda = 1.0 / mean_interarrival;
-    double p = percentile;
-    // Compute the percentile value using the inverse CDF of Exp(lambda)
-    double X_p = -log(1 - p) / lambda;
+    // double lambda = 1.0 / mean_interarrival;
+    // double p = percentile;
+    // // Compute the percentile value using the inverse CDF of Exp(lambda)
+    // double X_p = -log(1 - p) / lambda;
+    double X_p = last_interarrival * scale;
 
     // Compute and return the estimated next access time
     return prev_arrival + X_p;

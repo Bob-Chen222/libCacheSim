@@ -160,6 +160,8 @@ typedef struct {
 
   uint64_t num_hit;
   uint64_t sum_dist;
+
+  double scale;
 }delay_obj_metadata_t;
 
 typedef struct {

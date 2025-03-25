@@ -20,7 +20,7 @@ extern "C" {
 // #define USE_BELADY
 #undef USE_BELADY
 
-static const char *DEFAULT_PARAMS = "n-bit-counter=1";
+static const char *DEFAULT_PARAMS = "n-bit-counter=1,decrease-rate=1";
 
 // ***********************************************************************
 // ****                                                               ****
@@ -80,14 +80,15 @@ cache_t *Clock_init(const common_cache_params_t ccache_params, const char *cache
   params->q_tail = NULL;
   params->n_bit_counter = 1;
   params->max_freq = 1;
+  params->decrease_rate = 1;
 
   Clock_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
     Clock_parse_params(cache, cache_specific_params);
   }
 
-  if (params->n_bit_counter != 1) {
-    snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Clock-%d", params->n_bit_counter);
+  if (params->n_bit_counter != 1 || params->decrease_rate != 1) {
+    snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Clock-%d-%d", params->n_bit_counter, params->decrease_rate);
   }
 
   return cache;
@@ -144,29 +145,12 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req, const bool 
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
-    // if (obj->obj_id == 35005651){
-    //     printf("obj id: %ld\n", obj->obj_id);
-    //     printf("obj last access time: %ld\n", obj->last_access_time);
-    //     printf("obj cur access time: %ld\n", cache->n_req);
-    // }
-    if (cache->if_promote[obj->last_access_time] == cache->version_num && !obj->is_promoted) {
-      // check how many requests are actually hit hit
-      cache->num_stats3++;
-    }
-    if (obj->is_promoted && cache->mode_optimal_search) {
-      cache->if_promote[obj->last_access_time] = cache->version_num + 1;
-      // printf("obj id: %ld\n", obj->obj_id);
-      // printf("obj last access time: %d\n", obj->last_access_time);
-      // // printf("obj version num: %d\n", cache->version_num);
-      // printf("obj cur access time: %d\n", cache->n_req);
-      obj->is_promoted = false;
-      cache->num_stats2++;
-    }
     obj->last_access_time = cache->n_req;
     if (obj->clock.freq < params->max_freq) {
       obj->clock.freq += 1;
     }
-    if (UINT64_MAX != cache -> time_downgrade[cache -> n_req]){
+    float dice = (float)rand()/(float)(RAND_MAX); // generates random float between 0 and 1
+    if (UINT64_MAX != cache -> time_downgrade[cache -> n_req] && dice < 0.5){
       obj->clock.freq = 0;
     }
 
@@ -194,7 +178,7 @@ static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
   obj->clock.freq = 0;
-  obj->is_promoted = false;
+  // obj->is_promoted = false;
   obj->last_access_time = cache->n_req;
   obj->last_promote_time = 0;
 #ifdef USE_BELADY
@@ -261,7 +245,7 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
   cache_obj_t *obj_to_evict = params->q_tail;
   // while (obj_to_evict->clock.freq >= 1 && is_threshold(cache, obj_to_evict)) {
     while (obj_to_evict->clock.freq >= 1) {
-    obj_to_evict->clock.freq -= 1;
+    obj_to_evict->clock.freq -= params->decrease_rate;
     params->n_obj_rewritten += 1;
     params->n_byte_rewritten += obj_to_evict->obj_size;
     move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
@@ -271,7 +255,7 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
     obj_to_evict = params->q_tail;
   }
 
-  if (obj_to_evict->last_promote_time != 0 && obj_to_evict->clock.freq == 0){
+  if (obj_to_evict->last_promote_time != 0 && obj_to_evict->clock.freq <= 0){
     // that means the promotion failed
     cache->time_downgrade[obj_to_evict->last_access_time] = cache->version_num + 1;
   }
@@ -362,7 +346,13 @@ static void Clock_parse_params(cache_t *cache, const char *cache_specific_params
       if (strlen(end) > 2) {
         ERROR("param parsing error, find string \"%s\" after number\n", end);
       }
-    } else if (strcasecmp(key, "print") == 0) {
+    } else if (strcasecmp(key, "decrease-rate") == 0) {
+      params->decrease_rate = (int)strtol(value, &end, 0);
+      if (strlen(end) > 2) {
+        ERROR("param parsing error, find string \"%s\" after number\n", end);
+      }
+    }
+    else if (strcasecmp(key, "print") == 0) {
       printf("current parameters: %s\n", Clock_current_params(cache, params));
       exit(0);
     } else {

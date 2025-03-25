@@ -34,6 +34,7 @@ typedef struct {
   int n_bit_counter;
   // max_freq = 1 << (n_bit_counter - 1)
   int max_freq;
+  int decrease_rate;
 
   int64_t n_obj_rewritten;
   int64_t n_byte_rewritten;

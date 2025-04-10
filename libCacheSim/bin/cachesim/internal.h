@@ -54,7 +54,7 @@ struct arguments {
 
 void parse_cmd(int argc, char *argv[], struct arguments *args);
 
-void cache_reset(struct arguments *args);
+void cache_reset(struct arguments *args, int version_num);
 
 void free_arg(struct arguments *args);
 

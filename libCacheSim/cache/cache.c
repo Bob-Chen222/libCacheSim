@@ -47,6 +47,7 @@ cache_t *cache_struct_init(const char *const cache_name,
 
   cache->num_demotion_obj = 0;
   cache->sum_demotion_time = 0;
+  cache->version_num = params.version_num;
 
   cache->type1 = 0;
   cache->type2 = 0;
@@ -253,7 +254,6 @@ bool cache_get_base(cache_t *cache, const request_t *req) {
   if (hit) {
     VVERBOSE("req %ld, obj %ld --- cache hit\n", cache->n_req, req->obj_id);
   } else if (!cache->can_insert(cache, req)) {
-    printf("cannot insert obj %ld\n", req -> obj_id);
     VVERBOSE("req %ld, obj %ld --- cache miss cannot insert\n", cache->n_req,
              req->obj_id);
   } else {

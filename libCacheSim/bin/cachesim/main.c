@@ -85,11 +85,11 @@ int main(int argc, char **argv) {
     args.caches[0]->version_num = version_num;
     args.caches[0]->mode_optimal_search = true;
 
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 10; i++) {
       simulate(args.reader, args.caches[0], args.report_interval, args.warmup_sec, args.ofilepath,
                args.ignore_obj_size);
       reset_reader(args.reader);
-      cache_reset(&args);
+      cache_reset(&args, version_num);
       version_num++;
       args.caches[0]->version_num = version_num;
       args.caches[0]->n_req = 0;
@@ -115,7 +115,7 @@ int main(int argc, char **argv) {
       }
     }
     int version_num = 0;
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 5; i++) {
       for (int j = 0; j < args.n_cache_size; j++) {
         args.caches[j]->if_promote = if_promotes[j];
         args.caches[j]->time_downgrade = time_downgrades[j];
@@ -131,8 +131,9 @@ int main(int argc, char **argv) {
       //   my_free(sizeof(cache_stat_t) * args.n_cache_size * args.n_eviction_algo, result);
 
       reset_reader(args.reader);
-      cache_reset(&args);
+
       version_num++;
+      cache_reset(&args, version_num);
     }
     return 0;
   }

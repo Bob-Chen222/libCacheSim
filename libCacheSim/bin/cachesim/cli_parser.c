@@ -349,10 +349,10 @@ void parse_cmd(int argc, char *argv[], struct arguments *args) {
   print_parsed_args(args);
 }
 
-void cache_reset(struct arguments *args) {
+void cache_reset(struct arguments *args, int version_num) {
   for (int i = 0; i < args->n_eviction_algo * args->n_cache_size; i++) {
-    args->caches[i] = create_cache(args->trace_path, args->eviction_algo[0], args->cache_sizes[i],
-                args->eviction_params, args->consider_obj_metadata);
+    args->caches[i] = create_cache_with_version_num(args->trace_path, args->eviction_algo[0], args->cache_sizes[i],
+                args->eviction_params, args->consider_obj_metadata, version_num);
   }
 }
 

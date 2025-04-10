@@ -270,6 +270,7 @@ cache_stat_t *simulate_with_multi_caches(reader_t *reader, cache_t *caches[],
                                          int num_of_threads,
                                          bool free_cache_when_finish) {
   assert(num_of_caches > 0);
+  printf("simulate with multi caches cache version num: %d\n", caches[0]->version_num);
   int i, progress = 0;
 
   cache_stat_t *result = my_malloc_n(cache_stat_t, num_of_caches);

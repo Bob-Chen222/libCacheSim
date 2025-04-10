@@ -87,9 +87,9 @@ cache_t *Clock_init(const common_cache_params_t ccache_params, const char *cache
     Clock_parse_params(cache, cache_specific_params);
   }
 
-  if (params->n_bit_counter != 1 || params->decrease_rate != 1) {
-    snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Clock-%d-%d", params->n_bit_counter, params->decrease_rate);
-  }
+  // if (params->n_bit_counter != 1 || params->decrease_rate != 1) {
+  printf("cache init with verion num: %d\n", cache->version_num);
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Clock-%d-%d-%d", params->n_bit_counter, params->decrease_rate, cache->version_num + 1);
 
   return cache;
 }

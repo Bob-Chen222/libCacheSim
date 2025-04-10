@@ -35,6 +35,7 @@ typedef struct {
   int32_t hashpower;
   int64_t num_thread;
   bool consider_obj_metadata;
+  int version_num; //for keeping track of the number of iterations
 
 } common_cache_params_t;
 

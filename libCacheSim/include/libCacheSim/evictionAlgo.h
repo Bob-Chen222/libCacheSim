@@ -41,6 +41,8 @@ typedef struct {
 
   int64_t miss;
   int64_t vtime;
+  
+  int64_t version_num;
 } Clock_params_t;
 
 typedef struct {

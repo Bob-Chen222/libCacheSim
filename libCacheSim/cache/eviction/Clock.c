@@ -87,8 +87,6 @@ cache_t *Clock_init(const common_cache_params_t ccache_params, const char *cache
     Clock_parse_params(cache, cache_specific_params);
   }
 
-  // if (params->n_bit_counter != 1 || params->decrease_rate != 1) {
-  printf("cache init with verion num: %d\n", cache->version_num);
   snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Clock-%d-%d-%d", params->n_bit_counter, params->decrease_rate, cache->version_num + 1);
 
   return cache;
@@ -149,8 +147,8 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req, const bool 
     if (obj->clock.freq < params->max_freq) {
       obj->clock.freq += 1;
     }
-    float dice = (float)rand()/(float)(RAND_MAX); // generates random float between 0 and 1
-    if (UINT64_MAX != cache -> time_downgrade[cache -> n_req] && dice < 0.5){
+    obj->last_promote_time = 0;
+    if (UINT64_MAX != cache -> time_downgrade[cache -> n_req]){
       obj->clock.freq = 0;
     }
 
@@ -178,7 +176,6 @@ static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
 
   obj->clock.freq = 0;
-  // obj->is_promoted = false;
   obj->last_access_time = cache->n_req;
   obj->last_promote_time = 0;
 #ifdef USE_BELADY
@@ -218,18 +215,6 @@ static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
   return obj_to_evict;
 }
 
-static bool is_threshold(cache_t *cache, cache_obj_t *obj) {
-  int index = cache->if_promote[cache->n_req];
-  if (!cache->mode_optimal_search || cache->version_num == 0 || (index == cache->version_num)) {
-    return true;
-  }
-  // if (((double)next_rand() / (double)UINT64_MAX) < 0.05){
-  return false;
-  // }else{
-  //   return true;
-  // }
-}
-
 /**
  * @brief evict an object from the cache
  * it needs to call cache_evict_base before returning
@@ -243,7 +228,6 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
 
   cache_obj_t *obj_to_evict = params->q_tail;
-  // while (obj_to_evict->clock.freq >= 1 && is_threshold(cache, obj_to_evict)) {
     while (obj_to_evict->clock.freq >= 1) {
     obj_to_evict->clock.freq -= params->decrease_rate;
     params->n_obj_rewritten += 1;
@@ -255,7 +239,7 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
     obj_to_evict = params->q_tail;
   }
 
-  if (obj_to_evict->last_promote_time != 0 && obj_to_evict->clock.freq <= 0){
+  if (obj_to_evict->last_promote_time != 0){
     // that means the promotion failed
     cache->time_downgrade[obj_to_evict->last_access_time] = cache->version_num + 1;
   }

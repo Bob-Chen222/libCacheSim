@@ -222,8 +222,8 @@ static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
 
 bool promote(cache_t *cache, cache_obj_t *obj) {
     Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-    int64_t access_age = cache->n_req - obj->last_access_time;
-    int64_t promote_age = cache->n_req - obj->last_promote_time;
+    int64_t access_age = cache->n_insert - obj->last_access_time;
+    int64_t promote_age = cache->n_insert - obj->last_promote_time;
     if (((double)access_age / (double)promote_age) < params->scale) {
       return true;
     }else{
@@ -252,7 +252,7 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
     params->n_byte_rewritten += obj_to_evict->obj_size;
     move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
     cache->n_promotion += 1;
-    obj_to_evict->last_promote_time = cache->n_req;
+    obj_to_evict->last_promote_time = cache->n_insert;
     obj_to_evict->is_promoted = true;
     obj_to_evict = params->q_tail;
   }

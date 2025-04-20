@@ -146,6 +146,7 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req, const bool 
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
     obj->last_access_time = cache->n_req;
+    obj->last_access_itime = cache->n_insert;
     obj->clock.num_hits += 1;
     if (obj->clock.freq < params->max_freq) {
       obj->clock.freq += 1;
@@ -153,7 +154,7 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req, const bool 
     obj->is_promoted = false;
     if (UINT64_MAX != cache -> time_downgrade[cache -> n_req]){
       obj->clock.freq = 0;
-      obj->last_access_time = 0;
+      obj->last_access_itime = 0;
     }
 
 #ifdef USE_BELADY
@@ -222,8 +223,9 @@ static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
 
 bool promote(cache_t *cache, cache_obj_t *obj) {
     Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-    int64_t access_age = cache->n_insert - obj->last_access_time;
+    int64_t access_age = cache->n_insert - obj->last_access_itime;
     int64_t promote_age = cache->n_insert - obj->last_promote_time;
+    // printf("access_age: %ld, promote_age: %ld, boolean: %d\n", access_age, promote_age, (int)((double)access_age / (double)promote_age < params->scale));
     if (((double)access_age / (double)promote_age) < params->scale) {
       return true;
     }else{

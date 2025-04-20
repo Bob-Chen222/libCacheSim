@@ -20,7 +20,7 @@ extern "C" {
 // #define USE_BELADY
 #undef USE_BELADY
 
-static const char *DEFAULT_PARAMS = "n-bit-counter=1,decrease-rate=1";
+static const char *DEFAULT_PARAMS = "n-bit-counter=1,decrease-rate=1,scale=1.0";
 
 // ***********************************************************************
 // ****                                                               ****
@@ -81,13 +81,15 @@ cache_t *Clock_init(const common_cache_params_t ccache_params, const char *cache
   params->n_bit_counter = 1;
   params->max_freq = 1;
   params->decrease_rate = 1;
+  params->scale = 1.0f;
 
   Clock_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
     Clock_parse_params(cache, cache_specific_params);
   }
 
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Clock-%d-%d-%d", params->n_bit_counter, params->decrease_rate, cache->version_num + 1);
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Clock-%d-%d-%d-%f", params->n_bit_counter, params->decrease_rate, cache->version_num + 1
+  , params->scale);
 
   return cache;
 }
@@ -144,12 +146,14 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req, const bool 
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
     obj->last_access_time = cache->n_req;
+    obj->clock.num_hits += 1;
     if (obj->clock.freq < params->max_freq) {
       obj->clock.freq += 1;
     }
-    obj->last_promote_time = 0;
+    obj->is_promoted = false;
     if (UINT64_MAX != cache -> time_downgrade[cache -> n_req]){
       obj->clock.freq = 0;
+      obj->last_access_time = 0;
     }
 
 #ifdef USE_BELADY
@@ -178,6 +182,7 @@ static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
   obj->clock.freq = 0;
   obj->last_access_time = cache->n_req;
   obj->last_promote_time = 0;
+  obj->clock.num_hits = 0;
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
 #endif
@@ -215,6 +220,18 @@ static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
   return obj_to_evict;
 }
 
+bool promote(cache_t *cache, cache_obj_t *obj) {
+    Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
+    int64_t access_age = cache->n_req - obj->last_access_time;
+    int64_t promote_age = cache->n_req - obj->last_promote_time;
+    if (((double)access_age / (double)promote_age) < params->scale) {
+      return true;
+    }else{
+      return false;
+    }
+}
+  
+
 /**
  * @brief evict an object from the cache
  * it needs to call cache_evict_base before returning
@@ -228,7 +245,8 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
 
   cache_obj_t *obj_to_evict = params->q_tail;
-    while (obj_to_evict->clock.freq >= 1) {
+  // promote(cache, obj_to_evict)
+    while (promote(cache, obj_to_evict)) {
     obj_to_evict->clock.freq -= params->decrease_rate;
     params->n_obj_rewritten += 1;
     params->n_byte_rewritten += obj_to_evict->obj_size;
@@ -239,7 +257,7 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
     obj_to_evict = params->q_tail;
   }
 
-  if (obj_to_evict->last_promote_time != 0){
+  if (obj_to_evict->is_promoted){
     // that means the promotion failed
     cache->time_downgrade[obj_to_evict->last_access_time] = cache->version_num + 1;
   }
@@ -332,6 +350,11 @@ static void Clock_parse_params(cache_t *cache, const char *cache_specific_params
       }
     } else if (strcasecmp(key, "decrease-rate") == 0) {
       params->decrease_rate = (int)strtol(value, &end, 0);
+      if (strlen(end) > 2) {
+        ERROR("param parsing error, find string \"%s\" after number\n", end);
+      }
+    } else if (strcasecmp(key, "scale") == 0){
+      params->scale = strtod(value, &end);
       if (strlen(end) > 2) {
         ERROR("param parsing error, find string \"%s\" after number\n", end);
       }

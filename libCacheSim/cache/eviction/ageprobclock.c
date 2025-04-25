@@ -20,7 +20,7 @@ extern "C" {
 // #define USE_BELADY
 #undef USE_BELADY
 
-static const char *DEFAULT_PARAMS = "n-bit-counter=1,decrease-rate=1,scale=1.0";
+static const char *DEFAULT_PARAMS = "n-bit-counter=1,decrease-rate=1,scale=0.1";
 
 // ***********************************************************************
 // ****                                                               ****
@@ -28,14 +28,14 @@ static const char *DEFAULT_PARAMS = "n-bit-counter=1,decrease-rate=1,scale=1.0";
 // ****                                                               ****
 // ***********************************************************************
 
-static void Clock_parse_params(cache_t *cache, const char *cache_specific_params);
-static void Clock_free(cache_t *cache);
-static bool Clock_get(cache_t *cache, const request_t *req);
-static cache_obj_t *Clock_find(cache_t *cache, const request_t *req, const bool update_cache);
-static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req);
-static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req);
-static void Clock_evict(cache_t *cache, const request_t *req);
-static bool Clock_remove(cache_t *cache, const obj_id_t obj_id);
+static void AgeprobClock_parse_params(cache_t *cache, const char *cache_specific_params);
+static void AgeprobClock_free(cache_t *cache);
+static bool AgeprobClock_get(cache_t *cache, const request_t *req);
+static cache_obj_t *AgeprobClock_find(cache_t *cache, const request_t *req, const bool update_cache);
+static cache_obj_t *AgeprobClock_insert(cache_t *cache, const request_t *req);
+static cache_obj_t *AgeprobClock_to_evict(cache_t *cache, const request_t *req);
+static void AgeprobClock_evict(cache_t *cache, const request_t *req);
+static bool AgeprobClock_remove(cache_t *cache, const obj_id_t obj_id);
 
 // ***********************************************************************
 // ****                                                               ****
@@ -49,19 +49,19 @@ static bool Clock_remove(cache_t *cache, const obj_id_t obj_id);
  * @param ccache_params some common cache parameters
  * @param cache_specific_params Clock specific parameters as a string
  */
-cache_t *Clock_init(const common_cache_params_t ccache_params, const char *cache_specific_params) {
-  cache_t *cache = cache_struct_init("Clock", ccache_params, cache_specific_params);
-  cache->cache_init = Clock_init;
-  cache->cache_free = Clock_free;
-  cache->get = Clock_get;
-  cache->find = Clock_find;
-  cache->insert = Clock_insert;
-  cache->evict = Clock_evict;
-  cache->remove = Clock_remove;
+cache_t *AgeprobClock_init(const common_cache_params_t ccache_params, const char *cache_specific_params) {
+  cache_t *cache = cache_struct_init("AgeprobClock", ccache_params, cache_specific_params);
+  cache->cache_init = AgeprobClock_init;
+  cache->cache_free = AgeprobClock_free;
+  cache->get = AgeprobClock_get;
+  cache->find = AgeprobClock_find;
+  cache->insert = AgeprobClock_insert;
+  cache->evict = AgeprobClock_evict;
+  cache->remove = AgeprobClock_remove;
   cache->can_insert = cache_can_insert_default;
   cache->get_n_obj = cache_get_n_obj_default;
   cache->get_occupied_byte = cache_get_occupied_byte_default;
-  cache->to_evict = Clock_to_evict;
+  cache->to_evict = AgeprobClock_to_evict;
   cache->obj_md_size = 0;
   cache->num_stats = 0;
   cache->num_stats2 = 0;
@@ -83,12 +83,12 @@ cache_t *Clock_init(const common_cache_params_t ccache_params, const char *cache
   params->decrease_rate = 1;
   params->scale = 1.0f;
 
-  Clock_parse_params(cache, DEFAULT_PARAMS);
+  AgeprobClock_parse_params(cache, DEFAULT_PARAMS);
   if (cache_specific_params != NULL) {
-    Clock_parse_params(cache, cache_specific_params);
+    AgeprobClock_parse_params(cache, cache_specific_params);
   }
 
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Clock-%d-%d-%d-%f", params->n_bit_counter, params->decrease_rate, cache->version_num + 1
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "AgeprobClock-%d-%d-%d-%f", params->n_bit_counter, params->decrease_rate, cache->version_num + 1
   , params->scale);
 
   return cache;
@@ -99,7 +99,7 @@ cache_t *Clock_init(const common_cache_params_t ccache_params, const char *cache
  *
  * @param cache
  */
-static void Clock_free(cache_t *cache) {
+static void AgeprobClock_free(cache_t *cache) {
   free(cache->eviction_params);
   cache_struct_free(cache);
 }
@@ -123,7 +123,7 @@ static void Clock_free(cache_t *cache) {
  * @param req
  * @return true if cache hit, false if cache miss
  */
-static bool Clock_get(cache_t *cache, const request_t *req) { return cache_get_base(cache, req); }
+static bool AgeprobClock_get(cache_t *cache, const request_t *req) { return cache_get_base(cache, req); }
 
 // ***********************************************************************
 // ****                                                               ****
@@ -141,7 +141,7 @@ static bool Clock_get(cache_t *cache, const request_t *req) { return cache_get_b
  *  and if the object is expired, it is removed from the cache
  * @return true on hit, false on miss
  */
-static cache_obj_t *Clock_find(cache_t *cache, const request_t *req, const bool update_cache) {
+static cache_obj_t *AgeprobClock_find(cache_t *cache, const request_t *req, const bool update_cache) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
@@ -175,7 +175,7 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req, const bool 
  * @param req
  * @return the inserted object
  */
-static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
+static cache_obj_t *AgeprobClock_insert(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_insert_base(cache, req);
   prepend_obj_to_head(&params->q_head, &params->q_tail, obj);
@@ -203,7 +203,7 @@ static cache_obj_t *Clock_insert(cache_t *cache, const request_t *req) {
  * @param cache the cache
  * @return the object to be evicted
  */
-static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
+static cache_obj_t *AgeprobClock_to_evict(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
 
   int n_round = 0;
@@ -225,11 +225,12 @@ static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
 
 static bool promote(cache_t *cache, cache_obj_t *obj) {
     Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-    int64_t access_age = cache->n_insert - obj->last_access_itime;
-    int64_t promote_age = cache->n_insert - obj->last_promote_itime;
-    if (((double)access_age / (double)promote_age) < params->scale) {
+    double last_access_age = (double)cache->n_insert - obj->last_access_itime;
+    double prob_promotion = exp(-last_access_age * params->scale);
+    double rand_num = (double)rand() / (double)RAND_MAX;
+    if (rand_num < prob_promotion) {
       return true;
-    }else{
+    } else {
       return false;
     }
 }
@@ -244,12 +245,11 @@ static bool promote(cache_t *cache, cache_obj_t *obj) {
  * @param req not used
  * @param evicted_obj if not NULL, return the evicted object to caller
  */
-static void Clock_evict(cache_t *cache, const request_t *req) {
+static void AgeprobClock_evict(cache_t *cache, const request_t *req) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
 
   cache_obj_t *obj_to_evict = params->q_tail;
-  // promote(cache, obj_to_evict)
-  while (obj_to_evict->clock.freq >= 1) {
+  while (promote(cache, obj_to_evict)) {
     obj_to_evict->clock.freq -= params->decrease_rate;
     params->n_obj_rewritten += 1;
     params->n_byte_rewritten += obj_to_evict->obj_size;
@@ -284,7 +284,7 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
  * @param cache
  * @param obj
  */
-static void Clock_remove_obj(cache_t *cache, cache_obj_t *obj) {
+static void AgeprobClock_remove_obj(cache_t *cache, cache_obj_t *obj) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
 
   DEBUG_ASSERT(obj != NULL);
@@ -305,13 +305,13 @@ static void Clock_remove_obj(cache_t *cache, cache_obj_t *obj) {
  * @return true if the object is removed, false if the object is not in the
  * cache
  */
-static bool Clock_remove(cache_t *cache, const obj_id_t obj_id) {
+static bool AgeprobClock_remove(cache_t *cache, const obj_id_t obj_id) {
   cache_obj_t *obj = hashtable_find_obj_id(cache->hashtable, obj_id);
   if (obj == NULL) {
     return false;
   }
 
-  Clock_remove_obj(cache, obj);
+  AgeprobClock_remove_obj(cache, obj);
 
   return true;
 }
@@ -321,14 +321,14 @@ static bool Clock_remove(cache_t *cache, const obj_id_t obj_id) {
 // ****                  parameter set up functions                   ****
 // ****                                                               ****
 // ***********************************************************************
-static const char *Clock_current_params(cache_t *cache, Clock_params_t *params) {
+static const char *AgeprobClock_current_params(cache_t *cache, Clock_params_t *params) {
   static __thread char params_str[128];
   snprintf(params_str, 128, "n-bit-counter=%d\n", params->n_bit_counter);
 
   return params_str;
 }
 
-static void Clock_parse_params(cache_t *cache, const char *cache_specific_params) {
+static void AgeprobClock_parse_params(cache_t *cache, const char *cache_specific_params) {
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
   char *params_str = strdup(cache_specific_params);
   char *old_params_str = params_str;
@@ -363,11 +363,11 @@ static void Clock_parse_params(cache_t *cache, const char *cache_specific_params
       }
     }
     else if (strcasecmp(key, "print") == 0) {
-      printf("current parameters: %s\n", Clock_current_params(cache, params));
+      printf("current parameters: %s\n", AgeprobClock_current_params(cache, params));
       exit(0);
     } else {
       ERROR("%s does not have parameter %s, example paramters %s\n", cache->cache_name, key,
-            Clock_current_params(cache, params));
+            AgeprobClock_current_params(cache, params));
       exit(1);
     }
   }

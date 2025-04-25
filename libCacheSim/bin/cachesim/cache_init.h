@@ -139,6 +139,12 @@ static inline cache_t *create_cache(const char *trace_path,
     cache = lpLRU_prob_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lru-delay") == 0) {
     cache = LRU_delay_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "delayclock") == 0) {
+    cache = DelayClock_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "freqprobclock") == 0) {
+    cache = FreqprobClock_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "ageprobclock") == 0) {
+    cache = AgeprobClock_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "preddelay") == 0) {
     cache = PredDelay_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lru-probv0") == 0) {
@@ -316,6 +322,12 @@ static inline cache_t *create_cache_with_version_num(const char *trace_path,
     cache = Delay_offline_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "onlinedelay") == 0) {
     cache = Delay_online_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "delayclock") == 0) {
+    cache = DelayClock_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "freqprobclock") == 0) {
+    cache = FreqprobClock_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "ageprobclock") == 0) {  
+    cache = AgeprobClock_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "predclock") == 0) {
     cache = PredClock_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "age") == 0) {

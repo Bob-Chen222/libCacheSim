@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
     args.caches[0]->version_num = version_num;
     args.caches[0]->mode_optimal_search = true;
 
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 10; i++) {
       simulate(args.reader, args.caches[0], args.report_interval, args.warmup_sec, args.ofilepath,
                args.ignore_obj_size);
       reset_reader(args.reader);
@@ -122,7 +122,6 @@ int main(int argc, char **argv) {
         args.caches[j]->version_num = version_num;
         args.caches[j]->mode_optimal_search = true;
       }
-      printf("simulate %d\n", i);
       cache_stat_t *result =
           simulate_with_multi_caches(args.reader, args.caches, args.n_cache_size * args.n_eviction_algo, NULL, 0,
                                      args.warmup_sec, args.n_thread, true);

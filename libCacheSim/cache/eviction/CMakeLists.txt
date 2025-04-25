@@ -10,6 +10,9 @@ set(sourceC
         FIFO.c
         LRU.c
         Clock.c
+        DelayClock.c
+        freqprobclock.c
+        ageprobclock.c
         BeladyClock.c
         offlineFR.c
         pred_clock.c

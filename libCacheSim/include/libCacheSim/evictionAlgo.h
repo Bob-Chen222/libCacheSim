@@ -35,6 +35,7 @@ typedef struct {
   // max_freq = 1 << (n_bit_counter - 1)
   int max_freq;
   int decrease_rate;
+  double scale;
 
   int64_t n_obj_rewritten;
   int64_t n_byte_rewritten;
@@ -120,6 +121,15 @@ cache_t *Cacheus_init(const common_cache_params_t ccache_params,
                       const char *cache_specific_params);
 
 cache_t *Clock_init(const common_cache_params_t ccache_params,
+                    const char *cache_specific_params);
+
+cache_t *DelayClock_init(const common_cache_params_t ccache_params,
+                    const char *cache_specific_params);
+
+cache_t *FreqprobClock_init(const common_cache_params_t ccache_params,
+                    const char *cache_specific_params);
+
+cache_t *AgeprobClock_init(const common_cache_params_t ccache_params,
                     const char *cache_specific_params);
 
 cache_t *BeladyClock_init(const common_cache_params_t ccache_params,

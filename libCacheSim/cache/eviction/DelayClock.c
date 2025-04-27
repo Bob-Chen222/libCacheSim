@@ -148,6 +148,7 @@ static cache_obj_t *DelayClock_find(cache_t *cache, const request_t *req, const 
     obj->last_access_time = cache->n_req;
     obj->last_access_itime = cache->n_insert;
     obj->clock.num_hits += 1;
+    obj->last_promote_time = 0;
     if (obj->clock.freq < params->max_freq) {
       obj->clock.freq += 1;
     }
@@ -182,7 +183,9 @@ static cache_obj_t *DelayClock_insert(cache_t *cache, const request_t *req) {
 
   obj->clock.freq = 0;
   obj->last_access_time = cache->n_req;
+  obj->last_access_itime = 0;
   obj->last_promote_itime = 0;
+  obj->last_promote_time = 0;
   obj->clock.num_hits = 0;
   obj->is_promoted = false;
 #ifdef USE_BELADY
@@ -224,15 +227,15 @@ static cache_obj_t *DelayClock_to_evict(cache_t *cache, const request_t *req) {
 
 static promote(cache_t *cache, cache_obj_t *obj) {
     Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-    int64_t access_age = cache->n_insert - obj->last_access_itime;
-    int64_t promote_age = cache->n_insert - obj->last_promote_itime;
+    int64_t access_age = cache->n_req - obj->last_access_time;
+    int64_t promote_age = cache->n_req - obj->last_promote_time;
     if (((double)access_age / (double)promote_age) < params->scale) {
-      printf("promote, access_age=%ld, promote_age=%ld, scale=%f\n", access_age,
-             promote_age, params->scale);
+      // printf("promote, access_age=%ld, promote_age=%ld, scale=%f\n", access_age,
+      //        promote_age, params->scale);
       return true;
     }else{
-      printf("evicted, access_age=%ld, promote_age=%ld, scale=%f\n", access_age,
-             promote_age, params->scale);
+      // printf("evicted, access_age=%ld, promote_age=%ld, scale=%f\n", access_age,
+      //        promote_age, params->scale);
       return false;
     }
 }
@@ -259,6 +262,7 @@ static void DelayClock_evict(cache_t *cache, const request_t *req) {
     move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
     cache->n_promotion += 1;
     obj_to_evict->last_promote_itime = cache->n_insert;
+    obj_to_evict->last_promote_time = cache->n_req;
     obj_to_evict->is_promoted = true;
     obj_to_evict = params->q_tail;
   }

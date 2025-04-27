@@ -237,6 +237,7 @@ typedef struct cache_obj {
   uint64_t last_access_time; //measured as the number of requests
   uint64_t last_access_itime; //measured as the number of insertions
   uint64_t last_promote_itime;
+  uint64_t last_promote_time;
   bool is_promoted;
   pthread_mutex_t lock;
   struct {

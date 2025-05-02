@@ -187,6 +187,7 @@ static cache_obj_t *DelayClock_insert(cache_t *cache, const request_t *req) {
   obj->last_promote_itime = 0;
   obj->last_promote_time = 0;
   obj->clock.num_hits = 0;
+  obj->clock.next_access_vtime = req->next_access_vtime;
   obj->is_promoted = false;
 #ifdef USE_BELADY
   obj->next_access_vtime = req->next_access_vtime;
@@ -227,15 +228,21 @@ static cache_obj_t *DelayClock_to_evict(cache_t *cache, const request_t *req) {
 
 static promote(cache_t *cache, cache_obj_t *obj) {
     Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-    int64_t access_age = cache->n_insert - obj->last_access_itime;
-    int64_t promote_age = cache->n_insert - obj->last_promote_itime;
-    if (((double)access_age / (double)promote_age) < params->scale) {
-      // printf("promote, access_age=%ld, promote_age=%ld, future access age=%ld\n",
-      //        access_age, promote_age, obj->clock.next_access_vtime - cache->n_req );
+    int64_t access_iage = cache->n_insert - obj->last_access_itime;
+    int64_t promote_iage = cache->n_insert - obj->last_promote_itime;
+    int64_t promote_vage = cache->n_req - obj->last_promote_time;
+    if (((double)access_iage / (double)promote_iage) < params->scale) {
+
+      // if (access_iage < promote_iage){
+      //   printf("promote, access_iage=%ld, promote_iage=%ld, future access vage=%ld, promote_vage=%ld\n",
+      //           access_iage, promote_iage, obj->clock.next_access_vtime - cache->n_req, promote_vage);
+      // }
       return true;
     }else{
-      // printf("evicted, access_age=%ld, promote_age=%ld, scale=%f\n", access_age,
-      //        promote_age, params->scale);
+      if (obj->clock.next_access_vtime != INT64_MAX && promote_iage != access_iage) {
+        // printf("evicted, access_iage=%ld, promote_iage=%ld, future access vage=%ld, promote_vage=%ld\n",
+        //       access_iage, promote_iage, obj->clock.next_access_vtime - cache->n_req, promote_vage);
+      }
       return false;
     }
 }
@@ -256,7 +263,7 @@ static void DelayClock_evict(cache_t *cache, const request_t *req) {
   cache_obj_t *obj_to_evict = params->q_tail;
   int64_t obj_id_front = obj_to_evict->obj_id;
   // promote(cache, obj_to_evict)
-    while (promote(cache, obj_to_evict)) {
+    while (obj_to_evict->clock.freq >= 0 && promote(cache, obj_to_evict)) {
     obj_to_evict->clock.freq -= params->decrease_rate;
     params->n_obj_rewritten += 1;
     params->n_byte_rewritten += obj_to_evict->obj_size;
@@ -264,6 +271,7 @@ static void DelayClock_evict(cache_t *cache, const request_t *req) {
     cache->n_promotion += 1;
     obj_to_evict->last_promote_itime = cache->n_insert;
     obj_to_evict->last_promote_time = cache->n_req;
+    // obj_to_evict->last_access_itime = 0; (maybe useful move)
     obj_to_evict->is_promoted = true;
     obj_to_evict = params->q_tail;
   }

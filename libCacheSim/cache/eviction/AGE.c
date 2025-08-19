@@ -19,7 +19,7 @@ extern "C" {
 // #define USE_BELADY
 #undef USE_BELADY
 
-static const char *DEFAULT_PARAMS = "dist-ratio=0.1";
+static const char *DEFAULT_PARAMS = "scaler=0.1";
 static int false_negative = 0;
 static int total_negative = 0;
 
@@ -38,6 +38,10 @@ static cache_obj_t *AGE_to_evict(cache_t *cache, const request_t *req);
 static void AGE_evict(cache_t *cache, const request_t *req);
 static bool AGE_remove(cache_t *cache, const obj_id_t obj_id);
 static bool is_retained(cache_t *cache, cache_obj_t *obj_to_evict, const double expected_reuse_distance);
+static bool is_retained1(cache_t *cache, cache_obj_t *obj_to_evict, const double expected_reuse_distance);
+static bool is_retained2(cache_t *cache, cache_obj_t *obj_to_evict, const double expected_reuse_distance);
+static bool is_retained3(cache_t *cache, cache_obj_t *obj_to_evict, const double expected_reuse_distance);
+
 
 // ***********************************************************************
 // ****                                                               ****
@@ -84,7 +88,8 @@ cache_t *AGE_init(const common_cache_params_t ccache_params, const char *cache_s
     AGE_parse_params(cache, cache_specific_params);
   }
 
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "AGE-%f", params->dist_ratio);
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "AGE-%f", params->scaler);
+  printf("scaler: %f\n", params->scaler);
 
   return cache;
 }
@@ -145,10 +150,7 @@ static cache_obj_t *AGE_find(cache_t *cache, const request_t *req, const bool up
   if (obj != NULL && update_cache) {
     if (obj->age.freq < params->max_freq) {
       // added a threshold!!
-      double threshold = params -> dist_ratio;
-      if (params->counter_insert - obj->age.pos >= threshold * cache -> cache_size) {
-        obj->age.freq += 1; 
-      }
+      obj->age.freq += 1; 
     }
     obj->age.last_access_vtime = params->vtime;
 #ifdef USE_BELADY
@@ -234,8 +236,8 @@ static void AGE_evict(cache_t *cache, const request_t *req) {
 
   cache_obj_t *obj_to_evict = params->q_tail;
 
-//   bool retained = is_retained(cache, obj_to_evict, expected_reuse_distance);
-  while (obj_to_evict->age.freq > 0 && obj_to_evict->age.check_time != params->vtime) {
+  bool retained = is_retained(cache, obj_to_evict, expected_reuse_distance);
+  while (obj_to_evict->age.freq > 0 && retained && obj_to_evict->age.check_time != params->vtime) {
     params->counter_insert += 1;
     obj_to_evict->age.freq -= 1;
     params->n_obj_rewritten += 1;
@@ -298,6 +300,33 @@ static bool AGE_remove(cache_t *cache, const obj_id_t obj_id) {
   return true;
 }
 
+static bool is_retained(cache_t *cache, cache_obj_t *obj_to_evict, const double expected_reuse_distance) {
+  AGE_params_t *params = (AGE_params_t *)cache->eviction_params;
+  bool retained;
+  retained = is_retained1(cache, obj_to_evict, expected_reuse_distance);
+  return retained;
+}
+
+static bool is_retained1(cache_t *cache, cache_obj_t *obj_to_evict, const double expected_reuse_distance) {
+  if (obj_to_evict->age.freq == 0) {
+    return false;
+  }
+  AGE_params_t *params = (AGE_params_t *)cache->eviction_params;
+  double reuse_age = (params->vtime - obj_to_evict->age.last_access_vtime);
+
+  int next_reuse_time_prediction;
+  next_reuse_time_prediction = (int)reuse_age;
+
+
+  if (next_reuse_time_prediction < expected_reuse_distance * params->scaler) {
+    return true;
+  } else {
+    return false;
+  }
+
+  return false;
+}
+
 
 // ***********************************************************************
 // ****                                                               ****
@@ -306,7 +335,7 @@ static bool AGE_remove(cache_t *cache, const obj_id_t obj_id) {
 // ***********************************************************************
 static const char *AGE_current_params(cache_t *cache, AGE_params_t *params) {
   static __thread char params_str[128];
-  snprintf(params_str, 128, "dist-ratio=%d\n", params->dist_ratio);
+  snprintf(params_str, 128, "scaler=%d\n", params->scaler);
 
   return params_str;
 }
@@ -328,9 +357,9 @@ static void AGE_parse_params(cache_t *cache, const char *cache_specific_params) 
       params_str++;
     }
 
-    if (strcasecmp(key, "dist-ratio") == 0) {
+    if (strcasecmp(key, "scaler") == 0) {
       params->n_bit_counter = 1;
-      params->dist_ratio = (float)strtod(value, &end);
+      params->scaler = (float)strtod(value, &end);
       params->max_freq = 1;
       if (strlen(end) > 2) {
         ERROR("param parsing error, find string \"%s\" after number\n", end);

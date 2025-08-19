@@ -100,7 +100,7 @@ typedef struct {
   int64_t miss;
   int64_t vtime;
   
-  float dist_ratio;
+  float scaler;
 } AGE_params_t;
 
 

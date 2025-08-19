@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
     args.caches[0]->version_num = version_num;
     args.caches[0]->mode_optimal_search = true;
 
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 1; i++) {
       simulate(args.reader, args.caches[0], args.report_interval, args.warmup_sec, args.ofilepath,
                args.ignore_obj_size);
       reset_reader(args.reader);

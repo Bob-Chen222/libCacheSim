@@ -7,6 +7,7 @@ set(sourceC
         LFUDA.c
         ARC.c
         AGE.c
+        DelayFR.c
         FIFO.c
         LRU.c
         Clock.c
@@ -66,7 +67,7 @@ set(sourceC
 )
 
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/priv")
-    set(sourceC ${sourceC} 
+    set(sourceC ${sourceC}
 
                 priv/QDLPv0.c
 
@@ -80,7 +81,7 @@ if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/priv")
 endif()
 
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fifo")
-        set(sourceC ${sourceC} 
+        set(sourceC ${sourceC}
         fifo/LP_SFIFO.c
         fifo/LP_TwoQ.c
         fifo/LP_ARC.c
@@ -90,7 +91,7 @@ if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fifo")
 endif()
 
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/belady")
-        set(sourceC ${sourceC} 
+        set(sourceC ${sourceC}
         belady/Sieve_Belady.c
         belady/LRU_Belady.c
         belady/FIFO_Belady.c
@@ -105,15 +106,15 @@ set(sourceCPP
         )
 
 if (ENABLE_LRB)
-    set (sourceCPP ${sourceCPP} 
+    set (sourceCPP ${sourceCPP}
         LRB/lrb.cpp
         LRB/LRB_Interface.cpp
         )
 endif()
 
 if (ENABLE_GLCACHE)
-    set(sourceC 
-        ${sourceC} 
+    set(sourceC
+        ${sourceC}
         GLCache/bucket.c
         GLCache/dataPrep.c
         GLCache/eviction.c
@@ -144,7 +145,7 @@ set_target_properties(evictionCPP
 #         )
 
 
-        
+
 # add_library(eviction INTERFACE)
 # target_link_libraries(eviction INTERFACE ${evictionLib})
 

@@ -10,8 +10,8 @@
 extern "C" {
 #endif
 
-void simulate(reader_t *reader, cache_t *cache, int report_interval,
-              int warmup_sec, char *ofilepath, bool ignore_obj_size) {
+void simulate(reader_t *reader, cache_t *cache, int report_interval, int warmup_sec, char *ofilepath,
+              bool ignore_obj_size) {
   /* random seed */
   srand(time(NULL));
   set_rand_seed(rand());
@@ -44,8 +44,7 @@ void simulate(reader_t *reader, cache_t *cache, int report_interval,
       miss_cnt++;
       miss_byte += req->obj_size;
     }
-    if (req->clock_time - last_report_ts >= report_interval &&
-        req->clock_time != 0) {
+    if (req->clock_time - last_report_ts >= report_interval && req->clock_time != 0) {
       // INFO(
       //     "%s %s %.2lf hour: %lu requests, miss ratio %.4lf, interval miss "
       //     "ratio "
@@ -71,24 +70,21 @@ void simulate(reader_t *reader, cache_t *cache, int report_interval,
 
   char output_str[1024];
   char size_str[8];
-  if (!ignore_obj_size)
-    convert_size_to_str(cache->cache_size, size_str);
+  if (!ignore_obj_size) convert_size_to_str(cache->cache_size, size_str);
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-truncation"
   if (!ignore_obj_size) {
     snprintf(output_str, 1024,
-            "%s %s cache size %8s, %16lu req, miss ratio %.4lf, throughput "
-            "%.2lf MQPS\n",
-            reader->trace_path, cache->cache_name, size_str,
-            (unsigned long)req_cnt, (double)miss_cnt / (double)req_cnt,
-            (double)req_cnt / 1000000.0 / runtime);
+             "%s %s cache size %8s, %16lu req, miss ratio %.4lf, throughput "
+             "%.2lf MQPS\n",
+             reader->trace_path, cache->cache_name, size_str, (unsigned long)req_cnt,
+             (double)miss_cnt / (double)req_cnt, (double)req_cnt / 1000000.0 / runtime);
   } else {
     snprintf(output_str, 1024,
-            "%s %s cache size %8ld, %16lu req, miss ratio %.4lf, throughput "
-            "%.2lf MQPS, promotion %ld\n",
-            reader->trace_path, cache->cache_name, cache->cache_size,
-            (unsigned long)req_cnt, (double)miss_cnt / (double)req_cnt,
-            (double)req_cnt / 1000000.0 / runtime, cache->n_promotion);
+             "%s %s cache size %8ld, %16lu req, miss ratio %.4lf, throughput "
+             "%.2lf MQPS, promotion %ld\n",
+             reader->trace_path, cache->cache_name, cache->cache_size, (unsigned long)req_cnt,
+             (double)miss_cnt / (double)req_cnt, (double)req_cnt / 1000000.0 / runtime, cache->n_promotion);
   }
 
 #pragma GCC diagnostic pop

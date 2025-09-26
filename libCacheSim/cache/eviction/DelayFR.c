@@ -218,10 +218,9 @@ static void DelayFR_evict(cache_t *cache, const request_t *req) {
   move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
 
   params->n_obj_rewritten += 1;
-  INFO("n_obj_rewritten: %" PRIu64 "\n", params->n_obj_rewritten);
   params->n_byte_rewritten += obj_to_evict->obj_size;
 
-  cache->n_promotion = params->n_byte_rewritten;
+  cache->n_promotion += 1;
   params->current_time += 1;
 }
 
@@ -310,7 +309,7 @@ static void DelayFR_parse_params(cache_t *cache, const char *cache_specific_para
     } else if (strcasecmp(key, "delay-ratio") == 0) {
       params->delay_ratio = strtod(value, &end);
       params->delay_time = params->delay_ratio * cache->cache_size;
-      INFO("delay_time: %" PRIu64 "\n", params->delay_time);
+      // INFO("delay_time: %" PRIu64 "\n", params->delay_time);
       if (strlen(end) > 2) {
         ERROR("param parsing error, find string \"%s\" after number\n", end);
       }

@@ -61,10 +61,10 @@ void simulate(reader_t *reader, cache_t *cache, int report_interval, int warmup_
     read_one_req(reader, req);
   }
 
-  while (cache->n_obj > 0) {
-    cache->n_insert++;
-    cache->evict(cache, req);
-  }
+  // while (cache->n_obj > 0) {
+  //   cache->n_insert++;
+  //   cache->evict(cache, req);
+  // }
 
   double runtime = gettime() - start_time;
 

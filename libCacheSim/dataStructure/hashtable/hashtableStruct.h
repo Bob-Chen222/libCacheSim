@@ -5,12 +5,12 @@
 #ifndef libCacheSim_HASHTABLESTRUCT_H
 #define libCacheSim_HASHTABLESTRUCT_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+// #ifdef __cplusplus
+// extern "C" {
+// #endif
 
-#include <stdbool.h>
 #include <glib.h>
+#include <stdbool.h>
 
 #include "../../include/libCacheSim/cacheObj.h"
 
@@ -43,8 +43,8 @@ typedef struct hashtable {
   };
 } hashtable_t;
 
-#ifdef __cplusplus
-}
-#endif
+// #ifdef __cplusplus
+// }
+// #endif
 
 #endif  // libCacheSim_HASHTABLESTRUCT_H

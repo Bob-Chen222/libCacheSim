@@ -6,6 +6,11 @@ set(sourceC
         LFU.c
         LFUDA.c
         ARC.c
+        ARC_Delay.c
+        ARC_LRU.c
+        ARC_Prob.c
+        ARC_Batch.c
+        ARC_FR.c
         AGE.c
         DelayFR.c
         FIFO.c
@@ -27,6 +32,11 @@ set(sourceC
         LeCaR.c
         Cacheus.c
         TwoQ.c
+        TwoQ_LRU.c
+        TwoQ_Delay.c
+        TwoQ_Prob.c
+        TwoQ_Batch.c
+        TwoQ_FR.c
         ARCv0.c
         LRUv0.c
         LeCaRv0.c

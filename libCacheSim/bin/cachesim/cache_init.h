@@ -29,6 +29,26 @@ static inline cache_t *create_cache(const char *trace_path, const char *eviction
     cache = LRU_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "fifo") == 0) {
     cache = FIFO_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "twoq-delay") == 0) {
+    cache = TwoQ_Delay_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "twoq-batch") == 0) {
+    cache = TwoQ_Batch_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "twoq-prob") == 0) {
+    cache = TwoQ_Prob_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "twoq-fr") == 0) {
+    cache = TwoQ_FR_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "twoq-lru") == 0) {
+    cache = TwoQ_LRU_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "arc-lru") == 0) {
+    cache = ARC_LRU_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "arc-delay") == 0) {
+    cache = ARC_Delay_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "arc-prob") == 0) {
+    cache = ARC_Prob_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "arc-batch") == 0) {
+    cache = ARC_Batch_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "arc-fr") == 0) {
+    cache = ARC_FR_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "arc") == 0) {
     cache = ARC_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "arcv0") == 0) {
@@ -229,8 +249,28 @@ static inline cache_t *create_cache_with_version_num(const char *trace_path, con
     cache = LRU_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "fifo") == 0) {
     cache = FIFO_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "twoq-delay") == 0) {
+    cache = TwoQ_Delay_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "twoq-batch") == 0) {
+    cache = TwoQ_Batch_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "twoq-prob") == 0) {
+    cache = TwoQ_Prob_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "twoq-fr") == 0) {
+    cache = TwoQ_FR_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "twoq-lru") == 0) {
+    cache = TwoQ_LRU_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "arc") == 0) {
     cache = ARC_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "arc-lru") == 0) {
+    cache = ARC_LRU_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "arc-delay") == 0) {
+    cache = ARC_Delay_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "arc-prob") == 0) {
+    cache = ARC_Prob_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "arc-batch") == 0) {
+    cache = ARC_Batch_init(cc_params, eviction_params);
+  } else if (strcasecmp(eviction_algo, "arc-fr") == 0) {
+    cache = ARC_FR_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "arcv0") == 0) {
     cache = ARCv0_init(cc_params, eviction_params);
   } else if (strcasecmp(eviction_algo, "lhd") == 0) {

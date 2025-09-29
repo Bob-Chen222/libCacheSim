@@ -121,7 +121,23 @@ typedef struct {
   float scaler;
 } AGE_params_t;
 
+cache_t *TwoQ_LRU_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
+cache_t *TwoQ_Delay_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
+cache_t *TwoQ_Prob_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
+cache_t *TwoQ_Batch_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
+cache_t *TwoQ_FR_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
+
 cache_t *ARC_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
+
+cache_t *ARC_LRU_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
+
+cache_t *ARC_Delay_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
+
+cache_t *ARC_Prob_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
+
+cache_t *ARC_Batch_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
+
+cache_t *ARC_FR_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
 
 cache_t *ARCv0_init(const common_cache_params_t ccache_params, const char *cache_specific_params);
 

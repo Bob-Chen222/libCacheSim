@@ -10,6 +10,8 @@
 //  Copyright © 2018 Juncheng. All rights reserved.
 //
 
+#include <stdio.h>
+
 #include "../../dataStructure/hashtable/hashtable.h"
 #include "../../include/libCacheSim/evictionAlgo.h"
 
@@ -88,8 +90,8 @@ cache_t *Clock_init(const common_cache_params_t ccache_params, const char *cache
     Clock_parse_params(cache, cache_specific_params);
   }
 
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Clock-%d-%d-%d-%f", params->n_bit_counter, params->decrease_rate, cache->version_num + 1
-  , params->scale);
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "Clock-%d-%d-%d-%f", params->n_bit_counter, params->decrease_rate,
+           cache->version_num + 1, params->scale);
 
   return cache;
 }
@@ -145,17 +147,17 @@ static cache_obj_t *Clock_find(cache_t *cache, const request_t *req, const bool 
   Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
   if (obj != NULL && update_cache) {
-    obj->last_access_time = cache->n_req;
-    obj->last_access_itime = cache->n_insert;
-    obj->clock.num_hits += 1;
+    // obj->last_access_time = cache->n_req;
+    // obj->last_access_itime = cache->n_insert;
+    // obj->clock.num_hits += 1;
     if (obj->clock.freq < params->max_freq) {
       obj->clock.freq += 1;
     }
-    obj->is_promoted = false;
-    if (UINT64_MAX != cache -> time_downgrade[cache -> n_req]){
-      obj->clock.freq = 0;
-      obj->last_access_itime = 0;
-    }
+    // obj->is_promoted = false;
+    // if (UINT64_MAX != cache->time_downgrade[cache->n_req]) {
+    //   obj->clock.freq = 0;
+    //   obj->last_access_itime = 0;
+    // }
 
 #ifdef USE_BELADY
     obj->next_access_vtime = req->next_access_vtime;
@@ -224,16 +226,15 @@ static cache_obj_t *Clock_to_evict(cache_t *cache, const request_t *req) {
 }
 
 static bool promote(cache_t *cache, cache_obj_t *obj) {
-    Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
-    int64_t access_age = cache->n_insert - obj->last_access_itime;
-    int64_t promote_age = cache->n_insert - obj->last_promote_itime;
-    if (((double)access_age / (double)promote_age) < params->scale) {
-      return true;
-    }else{
-      return false;
-    }
+  Clock_params_t *params = (Clock_params_t *)cache->eviction_params;
+  int64_t access_age = cache->n_insert - obj->last_access_itime;
+  int64_t promote_age = cache->n_insert - obj->last_promote_itime;
+  if (((double)access_age / (double)promote_age) < params->scale) {
+    return true;
+  } else {
+    return false;
+  }
 }
-  
 
 /**
  * @brief evict an object from the cache
@@ -255,15 +256,15 @@ static void Clock_evict(cache_t *cache, const request_t *req) {
     params->n_byte_rewritten += obj_to_evict->obj_size;
     move_obj_to_head(&params->q_head, &params->q_tail, obj_to_evict);
     cache->n_promotion += 1;
-    obj_to_evict->last_promote_itime = cache->n_insert;
-    obj_to_evict->is_promoted = true;
+    // obj_to_evict->last_promote_itime = cache->n_insert;
+    // obj_to_evict->is_promoted = true;
     obj_to_evict = params->q_tail;
   }
 
-  if (obj_to_evict->is_promoted){
-    // that means the promotion failed
-    cache->time_downgrade[obj_to_evict->last_access_time] = cache->version_num + 1;
-  }
+  // if (obj_to_evict->is_promoted) {
+  //   // that means the promotion failed
+  //   cache->time_downgrade[obj_to_evict->last_access_time] = cache->version_num + 1;
+  // }
 
   remove_obj_from_list(&params->q_head, &params->q_tail, obj_to_evict);
   cache_evict_base(cache, obj_to_evict, true);
@@ -356,13 +357,12 @@ static void Clock_parse_params(cache_t *cache, const char *cache_specific_params
       if (strlen(end) > 2) {
         ERROR("param parsing error, find string \"%s\" after number\n", end);
       }
-    } else if (strcasecmp(key, "scale") == 0){
+    } else if (strcasecmp(key, "scale") == 0) {
       params->scale = strtod(value, &end);
       if (strlen(end) > 2) {
         ERROR("param parsing error, find string \"%s\" after number\n", end);
       }
-    }
-    else if (strcasecmp(key, "print") == 0) {
+    } else if (strcasecmp(key, "print") == 0) {
       printf("current parameters: %s\n", Clock_current_params(cache, params));
       exit(0);
     } else {

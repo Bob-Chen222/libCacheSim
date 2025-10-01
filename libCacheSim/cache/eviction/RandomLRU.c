@@ -2,11 +2,14 @@
 //  RandomLRU.c
 //  libCacheSim
 //
-//  RandomBelady eviction
+//  Picks two objects at random and evicts the one that is the least recently
+//  used RandomLRU eviction
 //
 //  Created by Juncheng on 8/2/16.
 //  Copyright © 2016 Juncheng. All rights reserved.
 //
+
+#include <stdlib.h>
 
 #include "../../dataStructure/hashtable/hashtable.h"
 #include "../../include/libCacheSim/evictionAlgo.h"
@@ -16,12 +19,12 @@
 extern "C" {
 #endif
 
-static const char *DEFAULT_PARAMS = "scaler=1.5";
-
 typedef struct RandomLRU_params {
-  int64_t n_miss;
-  double scaler;
+  int32_t n_samples;
+  cache_obj_t **eviction_candidates;
 } RandomLRU_params_t;
+
+static const char *DEFAULT_CACHE_PARAMS = "n-samples=16";
 
 // ***********************************************************************
 // ****                                                               ****
@@ -36,7 +39,6 @@ static cache_obj_t *RandomLRU_insert(cache_t *cache, const request_t *req);
 static cache_obj_t *RandomLRU_to_evict(cache_t *cache, const request_t *req);
 static void RandomLRU_evict(cache_t *cache, const request_t *req);
 static bool RandomLRU_remove(cache_t *cache, const obj_id_t obj_id);
-static bool can_evict(cache_t *cache, const request_t *req);
 static void RandomLRU_parse_params(cache_t *cache, const char *cache_specific_params);
 
 // ***********************************************************************
@@ -46,10 +48,10 @@ static void RandomLRU_parse_params(cache_t *cache, const char *cache_specific_pa
 // ****                       init, free, get                         ****
 // ***********************************************************************
 /**
- * @brief initialize a RandomBelady cache
+ * @brief initialize a RandomLRU cache
  *
  * @param ccache_params some common cache parameters
- * @param cache_specific_params RandomBelady specific parameters, should be NULL
+ * @param cache_specific_params RandomLRU specific parameters, should be NULL
  */
 cache_t *RandomLRU_init(const common_cache_params_t ccache_params, const char *cache_specific_params) {
   common_cache_params_t ccache_params_copy = ccache_params;
@@ -65,17 +67,18 @@ cache_t *RandomLRU_init(const common_cache_params_t ccache_params, const char *c
   cache->evict = RandomLRU_evict;
   cache->remove = RandomLRU_remove;
 
-  cache->eviction_params = my_malloc(RandomLRU_params_t);
-  ((RandomLRU_params_t *)cache->eviction_params)->n_miss = 0;
-  ((RandomLRU_params_t *)cache->eviction_params)->scaler = 1.5; //default
+  cache->eviction_params = (RandomLRU_params_t *)malloc(sizeof(RandomLRU_params_t));
+  RandomLRU_params_t *params = (RandomLRU_params_t *)(cache->eviction_params);
+  memset(params, 0, sizeof(RandomLRU_params_t));
 
-  // parse the cache specific parameters
-  RandomLRU_parse_params(cache, DEFAULT_PARAMS);
+  RandomLRU_parse_params(cache, DEFAULT_CACHE_PARAMS);
   if (cache_specific_params != NULL) {
     RandomLRU_parse_params(cache, cache_specific_params);
   }
-  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "RandomLRU-%f",
-              ((RandomLRU_params_t *)cache->eviction_params)->scaler);
+
+  params->eviction_candidates = (cache_obj_t **)malloc(sizeof(cache_obj_t *) * params->n_samples);
+
+  snprintf(cache->cache_name, CACHE_NAME_ARRAY_LEN, "RandomLRU-%d", params->n_samples);
 
   return cache;
 }
@@ -85,7 +88,11 @@ cache_t *RandomLRU_init(const common_cache_params_t ccache_params, const char *c
  *
  * @param cache
  */
-static void RandomLRU_free(cache_t *cache) { cache_struct_free(cache); }
+static void RandomLRU_free(cache_t *cache) {
+  RandomLRU_params_t *params = (RandomLRU_params_t *)(cache->eviction_params);
+  free(params->eviction_candidates);
+  cache_struct_free(cache);
+}
 
 /**
  * @brief this function is the user facing API
@@ -126,17 +133,8 @@ static bool RandomLRU_get(cache_t *cache, const request_t *req) { return cache_g
  */
 static cache_obj_t *RandomLRU_find(cache_t *cache, const request_t *req, const bool update_cache) {
   cache_obj_t *obj = cache_find_base(cache, req, update_cache);
-  if (update_cache && obj == NULL) {
-    ((RandomLRU_params_t *)cache->eviction_params)->n_miss++;
-  }
-
-  if (update_cache && obj != NULL) {
-    if (can_evict(cache, req)) {
-      cache->type2 ++;
-      RandomLRU_remove(cache, req->obj_id);
-    } else {
-      obj->Random.last_access_vtime = cache->n_req;
-    }
+  if (obj != NULL && update_cache) {
+    obj->Random.last_access_vtime = cache->n_req;
   }
 
   return obj;
@@ -153,12 +151,10 @@ static cache_obj_t *RandomLRU_find(cache_t *cache, const request_t *req, const b
  * @return the inserted object
  */
 static cache_obj_t *RandomLRU_insert(cache_t *cache, const request_t *req) {
-  if (can_evict(cache, req)) {
-    return NULL;
-  }
+  cache_obj_t *obj = cache_insert_base(cache, req);
+  obj->Random.last_access_vtime = cache->n_req;
 
-  cache_obj_t *cache_obj = cache_insert_base(cache, req);
-  cache_obj->Random.last_access_vtime = cache->n_req;
+  return obj;
 }
 
 /**
@@ -171,20 +167,36 @@ static cache_obj_t *RandomLRU_insert(cache_t *cache, const request_t *req) {
  * @param cache the cache
  * @return the object to be evicted
  */
-// static cache_obj_t *RandomLRU_to_evict(cache_t *cache, const request_t *req) {
-//   return hashtable_rand_obj(cache->hashtable);
-// }
 static cache_obj_t *RandomLRU_to_evict(cache_t *cache, const request_t *req) {
-#define K 16
-  cache_obj_t *lru_obj = hashtable_rand_obj(cache->hashtable), *curr_obj = NULL;
+  // cache_obj_t *obj_to_evict1 = hashtable_rand_obj(cache->hashtable);
+  // cache_obj_t *obj_to_evict2 = hashtable_rand_obj(cache->hashtable);
+  // const int N = 16;
+  // cache_objt_t *obj_to_evict[N];
+  // for (int i = 0; i < N; i++) {
+  //   obj_to_evict[i] = hashtable_rand_obj(cache->hashtable);
+  // }
+  // qsort(obj_to_evict, N, sizeof(cache_obj_t *), compare);
 
-  for (int i = 0; i < K-1; i++) {
-    curr_obj = hashtable_rand_obj(cache->hashtable);
-    if (curr_obj->Random.last_access_vtime < lru_obj->Random.last_access_vtime) {
-      lru_obj = curr_obj;
-    }
+  // if (obj_to_evict1->Random.last_access_vtime <
+  // obj_to_evict2->Random.last_access_vtime)
+  //   return obj_to_evict1;
+  // else
+  //   return obj_to_evict2;
+  assert(false);
+  return NULL;
+}
+
+static int compare_access_time(const void *p1, const void *p2) {
+  const cache_obj_t *obj1 = *(const cache_obj_t **)p1;
+  const cache_obj_t *obj2 = *(const cache_obj_t **)p2;
+
+  if (obj1->Random.last_access_vtime < obj2->Random.last_access_vtime) {
+    return -1;
+  } else if (obj1->Random.last_access_vtime > obj2->Random.last_access_vtime) {
+    return 1;
+  } else {
+    return 0;
   }
-  return lru_obj;
 }
 
 /**
@@ -196,11 +208,12 @@ static cache_obj_t *RandomLRU_to_evict(cache_t *cache, const request_t *req) {
  * @param req not used
  */
 static void RandomLRU_evict(cache_t *cache, const request_t *req) {
-  cache_obj_t *obj_to_evict = RandomLRU_to_evict(cache, req);
-  DEBUG_ASSERT(obj_to_evict->obj_size != 0);
-  cache->type1 ++;
-  cache->type2 ++;
-  cache_evict_base(cache, obj_to_evict, true);
+  RandomLRU_params_t *params = (RandomLRU_params_t *)(cache->eviction_params);
+  for (int i = 0; i < params->n_samples; i++) {
+    params->eviction_candidates[i] = hashtable_rand_obj(cache->hashtable);
+  }
+  qsort(params->eviction_candidates, params->n_samples, sizeof(cache_obj_t *), compare_access_time);
+  cache_evict_base(cache, params->eviction_candidates[0], true);
 }
 
 /**
@@ -226,37 +239,9 @@ static bool RandomLRU_remove(cache_t *cache, const obj_id_t obj_id) {
   return true;
 }
 
-static bool can_evict(cache_t *cache, const request_t *req) {
-  if (req->next_access_vtime == INT64_MAX) {
-    return true;
-  }
+static void RandomLRU_parse_params(cache_t *cache, const char *cache_specific_params) {
+  RandomLRU_params_t *params = (RandomLRU_params_t *)(cache->eviction_params);
 
-  int64_t n_req = cache->n_req;
-  int64_t n_miss = ((RandomLRU_params_t *)cache->eviction_params)->n_miss;
-  double scaler = ((RandomLRU_params_t *)cache->eviction_params)->scaler;
-  double miss_ratio = (double)n_miss / (double)cache->n_req;
-  int64_t dist = (double)req->next_access_vtime - cache->n_req;
-  int64_t threshold = ((double)cache->cache_size / miss_ratio);
-
-  int64_t threshold_product;
-  if (scaler == 0) {
-    threshold_product = INT64_MAX;
-  } else {
-    threshold_product = threshold * scaler;
-  }
-
-  if (dist > threshold_product) {
-    return true;
-  } else {
-    return false;
-  }
-
-  return false;
-}
-
-static void RandomLRU_parse_params(cache_t *cache,
-                               const char *cache_specific_params) {
-  RandomLRU_params_t *params = (RandomLRU_params_t *)cache->eviction_params;
   char *params_str = strdup(cache_specific_params);
   char *old_params_str = params_str;
   char *end;
@@ -272,15 +257,13 @@ static void RandomLRU_parse_params(cache_t *cache,
       params_str++;
     }
 
-
-    if (strcasecmp(key, "scaler") == 0) {
-      params->scaler = (float)strtod(value, &end);
-      if (strlen(end) > 2) {
-        ERROR("param parsing error, find string \"%s\" after number\n", end);
-      }
+    if (strcasecmp(key, "n-sample") == 0 || strcasecmp(key, "n-samples") == 0) {
+      params->n_samples = (int)strtol(value, &end, 0);
     } else if (strcasecmp(key, "print") == 0) {
+      printf("current parameters: n-samples=%d\n", params->n_samples);
       exit(0);
     } else {
+      ERROR("%s does not have parameter %s\n", cache->cache_name, key);
       exit(1);
     }
   }
